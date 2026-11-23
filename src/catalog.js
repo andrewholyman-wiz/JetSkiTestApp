@@ -67,6 +67,30 @@ export const AWNING_PALETTES = [
   { id: 'mustard', name: 'Saffron', hex: '#c2882b' },
 ];
 
+export const BRAND_PALETTES = [
+  { id: 'emerald', name: 'Fresh Emerald', hex: '#2e7d4f' },
+  { id: 'crimson', name: 'Market Crimson', hex: '#b83a34' },
+  { id: 'cobalt', name: 'Harbor Cobalt', hex: '#225c8a' },
+  { id: 'amber', name: 'Harvest Amber', hex: '#c98628' },
+  { id: 'teal', name: 'Electric Teal', hex: '#237a82' },
+  { id: 'plum', name: 'Artisan Plum', hex: '#6d4675' },
+];
+
+export const GARAGE_PALETTES = [
+  { id: 'concrete', name: 'Warm Concrete', hex: '#bfb9ad' },
+  { id: 'limestone', name: 'Limestone', hex: '#dfd7c8' },
+  { id: 'slate', name: 'Nordic Slate', hex: '#6c7c8c' },
+  { id: 'terracotta', name: 'Urban Brick', hex: '#b36b54' },
+  { id: 'charcoal', name: 'Anthracite', hex: '#434b56' },
+];
+
+export const OCCUPANCY_OPTIONS = [
+  { value: 'empty', label: 'Empty' },
+  { value: 'light', label: 'Light' },
+  { value: 'busy', label: 'Busy' },
+  { value: 'full', label: 'Full' },
+];
+
 export const FOLIAGE_PALETTES = {
   spring: { name: 'Spring Green', colors: ['#5d9b52', '#6faf5f', '#4e8846'] },
   summer: { name: 'Summer Lush', colors: ['#3f7c44', '#4e8f4f', '#326839'] },
@@ -183,6 +207,131 @@ export const BLOCK_CATALOG = {
       { key: 'dock', label: 'Wooden Pier Accent', kind: 'toggle' },
     ],
     stats: () => ({ residents: 0, jobs: 0, greenery: 0.8 }),
+  },
+
+  parking_garage: {
+    type: 'parking_garage',
+    category: 'infrastructure',
+    name: 'Parking Structure',
+    desc: 'Multi-level deck (2–10 fl) & solar/park roof',
+    swatch: '#5b6775',
+    icon: '🅿',
+    paintable: false,
+    rotatable: true,
+    defaults: {
+      floors: 4,
+      density: 'medium', // low | medium | high
+      style: 'concrete', // concrete | louvered | brick
+      color: '#bfb9ad',
+      roofFeature: 'open', // open | solar | green
+      groundRetail: true,
+      pSign: true,
+    },
+    controls: [
+      { key: 'floors', label: 'Deck Levels', kind: 'range', min: 2, max: 10, step: 1, unit: ' lvl' },
+      { key: 'density', label: 'Footprint Size', kind: 'segmented', options: DENSITY_OPTIONS_3 },
+      {
+        key: 'style',
+        label: 'Deck Facade',
+        kind: 'select',
+        options: [
+          { value: 'concrete', label: 'Open Architectural Concrete' },
+          { value: 'louvered', label: 'Modern Slatted Louver Screen' },
+          { value: 'brick', label: 'Historic Brick-Wrapped Deck' },
+        ],
+      },
+      { key: 'color', label: 'Structure Color', kind: 'swatches', palette: GARAGE_PALETTES },
+      {
+        key: 'roofFeature',
+        label: 'Roof Deck Feature',
+        kind: 'select',
+        options: [
+          { value: 'open', label: 'Open Rooftop Parking' },
+          { value: 'solar', label: 'Solar Canopy Array' },
+          { value: 'green', label: 'Rooftop Pocket Park' },
+        ],
+      },
+      { key: 'groundRetail', label: 'Ground-Floor Retail', kind: 'toggle' },
+      { key: 'pSign', label: 'Illuminated "P" Sign', kind: 'toggle' },
+    ],
+    stats: (o) => {
+      const f = getDensityFactor(o.density);
+      const levels = o.floors || 4;
+      const stalls = Math.round(levels * 48 * f);
+      return {
+        residents: 0,
+        jobs: Math.round(levels * 2 * f + (o.groundRetail ? 10 : 0)),
+        parking: stalls,
+        greenery: o.roofFeature === 'green' ? 0.65 : o.roofFeature === 'solar' ? 0.2 : 0,
+      };
+    },
+  },
+
+  parking_lot: {
+    type: 'parking_lot',
+    category: 'infrastructure',
+    name: 'Surface Parking Lot',
+    desc: 'Paintable lot, EV chargers & solar carports',
+    swatch: '#4b535e',
+    icon: 'P',
+    paintable: true,
+    rotatable: true,
+    defaults: {
+      layout: 'standard', // standard | ev | shaded
+      occupancy: 'busy', // empty | light | busy | full
+      solarCanopy: false,
+      lamps: true,
+    },
+    controls: [
+      {
+        key: 'layout',
+        label: 'Lot Type',
+        kind: 'select',
+        options: [
+          { value: 'standard', label: 'Standard Asphalt Bays' },
+          { value: 'ev', label: 'EV Fast-Charger Lot' },
+          { value: 'shaded', label: 'Tree-Island Eco Lot' },
+        ],
+      },
+      { key: 'occupancy', label: 'Parked Cars', kind: 'segmented', options: OCCUPANCY_OPTIONS },
+      { key: 'solarCanopy', label: 'Solar Carport Canopy', kind: 'toggle' },
+      { key: 'lamps', label: 'Lot Floodlights', kind: 'toggle' },
+    ],
+    stats: (o) => ({
+      residents: 0,
+      jobs: o.layout === 'ev' ? 2 : 1,
+      parking: o.layout === 'shaded' ? 20 : 28,
+      greenery: (o.layout === 'shaded' ? 0.6 : 0.05) + (o.solarCanopy ? 0.2 : 0),
+    }),
+  },
+
+  transit: {
+    type: 'transit',
+    category: 'infrastructure',
+    name: 'Transit & Mobility Hub',
+    desc: 'Metro pavilion, BRT terminal, or bike-share',
+    swatch: '#225c8a',
+    icon: '🚇',
+    paintable: false,
+    rotatable: true,
+    defaults: {
+      hubType: 'metro', // metro | bus | bikeshare
+      brandColor: '#225c8a',
+    },
+    controls: [
+      {
+        key: 'hubType',
+        label: 'Transit Mode',
+        kind: 'select',
+        options: [
+          { value: 'metro', label: 'Metro Glass Entrance Pavilion' },
+          { value: 'bus', label: 'Bus Rapid Transit Terminal' },
+          { value: 'bikeshare', label: 'E-Bike Share Mobility Dock' },
+        ],
+      },
+      { key: 'brandColor', label: 'Line Accent Color', kind: 'swatches', palette: BRAND_PALETTES },
+    ],
+    stats: () => ({ residents: 0, jobs: 8, greenery: 0.35 }),
   },
 
   highrise: {
@@ -429,6 +578,143 @@ export const BLOCK_CATALOG = {
         greenery: (o.patio ? 0.2 : 0) + (o.density === 'low' ? 0.25 : 0),
       };
     },
+  },
+
+  grocery: {
+    type: 'grocery',
+    category: 'commercial',
+    name: 'Major Grocery Store',
+    desc: 'Supermarket, organic market hall & supercenter',
+    swatch: '#2e7d4f',
+    icon: '🛒',
+    paintable: false,
+    rotatable: true,
+    defaults: {
+      format: 'supermarket', // supermarket | organic | hypermarket
+      density: 'medium', // low | medium | high
+      brandColor: '#2e7d4f',
+      color: '#dfd7c8',
+      outdoorDisplay: true,
+      solar: false,
+    },
+    controls: [
+      {
+        key: 'format',
+        label: 'Store Format',
+        kind: 'select',
+        options: [
+          { value: 'supermarket', label: 'Neighborhood Supermarket' },
+          { value: 'organic', label: 'Organic Market Hall' },
+          { value: 'hypermarket', label: 'Flagship Supercenter' },
+        ],
+      },
+      { key: 'density', label: 'Store Footprint', kind: 'segmented', options: DENSITY_OPTIONS_3 },
+      { key: 'brandColor', label: 'Brand Accent', kind: 'swatches', palette: BRAND_PALETTES },
+      { key: 'color', label: 'Wall Finish', kind: 'swatches', palette: FACADE_PALETTES },
+      { key: 'outdoorDisplay', label: 'Cart Corral & Produce Stand', kind: 'toggle' },
+      { key: 'solar', label: 'Rooftop Solar Panels', kind: 'toggle' },
+    ],
+    stats: (o) => {
+      const f = getDensityFactor(o.density);
+      const baseJobs = o.format === 'hypermarket' ? 68 : o.format === 'organic' ? 42 : 52;
+      return {
+        residents: 0,
+        jobs: Math.round(baseJobs * f),
+        parking: Math.round(12 * f),
+        greenery: (o.format === 'organic' ? 0.4 : 0.1) + (o.solar ? 0.2 : 0),
+      };
+    },
+  },
+
+  retail: {
+    type: 'retail',
+    category: 'commercial',
+    name: 'Standalone Retail',
+    desc: 'Big-box, strip mall, flagship, pharmacy & diner',
+    swatch: '#b83a34',
+    icon: '🛍',
+    paintable: false,
+    rotatable: true,
+    defaults: {
+      storeType: 'strip', // strip | bigbox | department | pharmacy | restaurant
+      floors: 1,
+      density: 'medium', // low | medium | high
+      brandColor: '#b83a34',
+      color: '#dfd7c8',
+      signage: true,
+    },
+    controls: [
+      {
+        key: 'storeType',
+        label: 'Retail Format',
+        kind: 'select',
+        options: [
+          { value: 'strip', label: 'Retail Strip (3 Shops)' },
+          { value: 'bigbox', label: 'Big-Box Home & Tech' },
+          { value: 'department', label: 'Flagship Department Store' },
+          { value: 'pharmacy', label: 'Corner Pharmacy + Drive-Thru' },
+          { value: 'restaurant', label: 'Standalone Bistro / Diner' },
+        ],
+      },
+      { key: 'floors', label: 'Stories', kind: 'range', min: 1, max: 3, step: 1, unit: ' fl' },
+      { key: 'density', label: 'Footprint Size', kind: 'segmented', options: DENSITY_OPTIONS_3 },
+      { key: 'brandColor', label: 'Brand Accent', kind: 'swatches', palette: BRAND_PALETTES },
+      { key: 'color', label: 'Facade Color', kind: 'swatches', palette: FACADE_PALETTES },
+      { key: 'signage', label: 'Illuminated Signage', kind: 'toggle' },
+    ],
+    stats: (o) => {
+      const f = getDensityFactor(o.density);
+      const floors = o.floors || 1;
+      const baseJobs =
+        o.storeType === 'bigbox'
+          ? 48
+          : o.storeType === 'department'
+            ? 38
+            : o.storeType === 'strip'
+              ? 30
+              : 24;
+      return {
+        residents: 0,
+        jobs: Math.round(baseJobs * (0.7 + floors * 0.35) * f),
+        parking: o.storeType === 'pharmacy' || o.storeType === 'restaurant' ? 6 : 0,
+        greenery: o.density === 'low' ? 0.3 : 0.1,
+      };
+    },
+  },
+
+  service_station: {
+    type: 'service_station',
+    category: 'commercial',
+    name: 'EV Hub & Service Station',
+    desc: 'Fast-charge lounge or fuel & convenience mart',
+    swatch: '#237a82',
+    icon: '⚡',
+    paintable: false,
+    rotatable: true,
+    defaults: {
+      stationType: 'ev_lounge', // ev_lounge | classic
+      brandColor: '#237a82',
+      solar: true,
+    },
+    controls: [
+      {
+        key: 'stationType',
+        label: 'Station Style',
+        kind: 'select',
+        options: [
+          { value: 'ev_lounge', label: 'EV Supercharger + Café Lounge' },
+          { value: 'classic', label: 'Fuel & Convenience Station' },
+        ],
+      },
+      { key: 'brandColor', label: 'Canopy Accent', kind: 'swatches', palette: BRAND_PALETTES },
+      { key: 'solar', label: 'Solar Canopy Roof', kind: 'toggle' },
+    ],
+    stats: (o) => ({
+      residents: 0,
+      jobs: 14,
+      parking: 8,
+      greenery: (o.stationType === 'ev_lounge' ? 0.25 : 0.05) + (o.solar ? 0.25 : 0),
+    }),
   },
 
   civic: {

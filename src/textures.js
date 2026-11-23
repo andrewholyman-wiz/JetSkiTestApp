@@ -359,3 +359,142 @@ export function getWaterMaterial(isNight = false) {
   materialCache.set(key, mat);
   return mat;
 }
+
+// ============================================================================
+// Multi-Level Parking Structure Deck Facade & Illuminated "P" Sign Materials
+// ============================================================================
+export function getParkingDeckMaterial({ style = 'concrete', color = '#bfb9ad', levels = 4, isNight = false }) {
+  const safeLevels = Math.max(1, Math.round(levels));
+  const tileLevels = safeLevels > 6 ? 6 : safeLevels;
+  const repeatY = safeLevels > 6 ? safeLevels / 6 : 1;
+  const baseKey = `parkdeck:${style}:${color}:${tileLevels}:${isNight ? 'N' : 'D'}`;
+  const matKey = `${baseKey}:r${Math.round(repeatY * 100)}`;
+  if (materialCache.has(matKey)) return materialCache.get(matKey);
+
+  const map = makeCanvasTexture(
+    `${baseKey}:map`,
+    256,
+    512,
+    (ctx, w, h) => {
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, w, h);
+
+      const levelH = h / tileLevels;
+      const cols = 4;
+      const colW = w / cols;
+
+      for (let lv = 0; lv < tileLevels; lv++) {
+        const y0 = lv * levelH;
+        // Bottom concrete spandrel wall (~44% of level height)
+        const openH = levelH * 0.46;
+        const openY = y0 + levelH * 0.14;
+
+        // Shadowed interior parking deck opening
+        ctx.fillStyle = isNight ? '#262d38' : '#2f3640';
+        ctx.fillRect(0, openY, w, openH);
+
+        // Subtle interior ceiling fluorescent strip inside each bay
+        if (isNight) {
+          ctx.fillStyle = '#fff0cc';
+          for (let c = 0; c < cols; c++) {
+            ctx.fillRect(c * colW + colW * 0.24, openY + 3, colW * 0.52, Math.max(3, openH * 0.14));
+          }
+        } else {
+          // Subtle interior shadow depth gradient
+          ctx.fillStyle = 'rgba(0,0,0,0.22)';
+          ctx.fillRect(0, openY, w, openH * 0.32);
+        }
+
+        // Architectural style overlay across the open bays
+        if (style === 'louvered') {
+          ctx.fillStyle = shadeHex('#8f6847', 1.05);
+          for (let x = 4; x < w; x += 10) {
+            ctx.fillRect(x, openY - 2, 4, openH + 4);
+          }
+        } else if (style === 'brick') {
+          // Subtle brick mortar on spandrel + heavy masonry piers
+          ctx.fillStyle = shadeHex(color, 0.86);
+          ctx.fillRect(0, y0 + levelH * 0.62, w, 2);
+          ctx.fillRect(0, y0 + levelH * 0.82, w, 2);
+        }
+
+        // Structural vertical piers between bays
+        const pierW = style === 'brick' ? 14 : 10;
+        ctx.fillStyle = shadeHex(color, 0.94);
+        for (let c = 0; c <= cols; c++) {
+          ctx.fillRect(c * colW - pierW * 0.5, y0, pierW, levelH);
+        }
+
+        // Crisp concrete slab edge highlight
+        ctx.fillStyle = shadeHex(color, 1.08);
+        ctx.fillRect(0, y0 + levelH * 0.58, w, Math.max(3, levelH * 0.08));
+      }
+    },
+    1,
+    repeatY
+  );
+
+  let emissiveMap = null;
+  if (isNight) {
+    emissiveMap = makeCanvasTexture(
+      `${baseKey}:emissive`,
+      256,
+      512,
+      (ctx, w, h) => {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, w, h);
+        const levelH = h / tileLevels;
+        const cols = 4;
+        const colW = w / cols;
+        ctx.fillStyle = '#ffdf9e';
+        for (let lv = 0; lv < tileLevels; lv++) {
+          const openY = lv * levelH + levelH * 0.16;
+          const stripH = Math.max(4, levelH * 0.09);
+          for (let c = 0; c < cols; c++) {
+            ctx.fillRect(c * colW + colW * 0.22, openY, colW * 0.56, stripH);
+          }
+        }
+      },
+      1,
+      repeatY
+    );
+  }
+
+  const mat = new THREE.MeshStandardMaterial({
+    map,
+    emissive: isNight ? new THREE.Color('#ffda8c') : new THREE.Color('#000000'),
+    emissiveMap,
+    emissiveIntensity: isNight ? 1.15 : 0,
+    roughness: 0.84,
+    metalness: 0.06,
+  });
+  materialCache.set(matKey, mat);
+  return mat;
+}
+
+export function getParkingSignMaterial(isNight = false) {
+  const key = `parksign:${isNight ? 'N' : 'D'}`;
+  if (materialCache.has(key)) return materialCache.get(key);
+  const map = makeCanvasTexture(key, 128, 128, (ctx, w, h) => {
+    ctx.fillStyle = '#1d5fa7';
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 8;
+    ctx.strokeRect(8, 8, w - 16, h - 16);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 82px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('P', w * 0.5, h * 0.54);
+  });
+  const mat = new THREE.MeshStandardMaterial({
+    map,
+    emissive: isNight ? new THREE.Color('#4ca6ff') : new THREE.Color('#000000'),
+    emissiveMap: isNight ? map : null,
+    emissiveIntensity: isNight ? 1.15 : 0,
+    roughness: 0.35,
+    metalness: 0.1,
+  });
+  materialCache.set(key, mat);
+  return mat;
+}

@@ -7,6 +7,8 @@ import {
   getPlazaStoneMaterial,
   getStandardMaterial,
   getWaterMaterial,
+  getParkingDeckMaterial,
+  getParkingSignMaterial,
 } from './textures.js';
 
 // Shared unit geometries (reused across all tiles for minimal memory & high FPS)
@@ -92,6 +94,30 @@ function makeBench(group, x, z, rotY = 0) {
   b.add(makeBox(0.04, 0.09, 0.1, ironMat, -0.13, 0.045, 0, false, false));
   b.add(makeBox(0.04, 0.09, 0.1, ironMat, 0.13, 0.045, 0, false, false));
   group.add(b);
+}
+
+const PARKED_CAR_COLORS = ['#c44536', '#2c6e91', '#d9a441', '#4f7a58', '#d9dce0', '#3d4652', '#7d5a8a'];
+
+function makeParkedCar(group, x, y, z, rotY = 0, colorIdx = 0) {
+  const bodyMat = getStandardMaterial(PARKED_CAR_COLORS[colorIdx % PARKED_CAR_COLORS.length], 0.42, 0.25);
+  const cabinMat = getStandardMaterial('#2d3744', 0.25, 0.35);
+  const car = new THREE.Group();
+  car.position.set(x, y, z);
+  car.rotation.y = rotY;
+  car.add(makeBox(0.18, 0.075, 0.34, bodyMat, 0, 0.045, 0, true, false));
+  car.add(makeBox(0.15, 0.055, 0.18, cabinMat, 0, 0.105, -0.015, false, false));
+  group.add(car);
+}
+
+function makeSolarCanopy(group, x, y, z, w, d, tilt = 0.14) {
+  const frameMat = getStandardMaterial('#3f4854', 0.45, 0.45);
+  const panelMat = getStandardMaterial('#1e3a5f', 0.22, 0.55);
+  const postH = 0.34;
+  group.add(makeCyl(0.025, 0.028, postH, frameMat, x - w * 0.34, y + postH * 0.5, z, true, false));
+  group.add(makeCyl(0.025, 0.028, postH, frameMat, x + w * 0.34, y + postH * 0.5, z, true, false));
+  const panel = makeBox(w, 0.035, d, panelMat, x, y + postH + 0.02, z, true, true);
+  panel.rotation.x = tilt;
+  group.add(panel);
 }
 
 // ============================================================================
@@ -1217,6 +1243,582 @@ function buildTrees(opts) {
 }
 
 // ============================================================================
+// 11. MULTI-LEVEL PARKING STRUCTURE (2–10 Levels, Solar/Park Roof, "P" Sign)
+// ============================================================================
+function buildParkingGarage(opts, isNight) {
+  const g = new THREE.Group();
+  const s = TILE_SIZE;
+  const floors = Math.max(2, Math.min(10, Number(opts.floors) || 4));
+  const density = opts.density || 'medium';
+  const style = opts.style || 'concrete';
+  const color = opts.color || '#bfb9ad';
+  const roofFeature = opts.roofFeature || 'open';
+
+  g.add(makeBox(s, 0.08, s, getStandardMaterial('#c6c1b7', 0.9, 0.0), 0, 0.04, 0, false, true));
+
+  const bodyW = density === 'low' ? 1.38 : density === 'high' ? 1.86 : 1.66;
+  const bodyD = density === 'low' ? 1.32 : density === 'high' ? 1.82 : 1.58;
+  const levelH = 0.3;
+
+  let baseY = 0.08;
+  const deckLevels = opts.groundRetail ? Math.max(1, floors - 1) : floors;
+  const darkEntry = getStandardMaterial('#232830', 0.8, 0.1);
+  const frameMat = getStandardMaterial('#404854', 0.55, 0.35);
+
+  if (opts.groundRetail) {
+    const retailH = 0.42;
+    const stoneMat = getStandardMaterial('#4d5561', 0.74, 0.08);
+    const shopGlow = isNight
+      ? getStandardMaterial('#ffe8ad', 0.25, 0.1, '#ffd075', 1.45)
+      : getStandardMaterial('#405d75', 0.22, 0.3);
+    g.add(makeBox(bodyW + 0.03, retailH, bodyD + 0.03, stoneMat, 0, baseY + retailH * 0.5, 0));
+    // Left side shop window, right side garage vehicle entry portal
+    g.add(makeBox(bodyW * 0.48, retailH * 0.62, 0.04, shopGlow, -bodyW * 0.2, baseY + retailH * 0.45, bodyD * 0.5 + 0.02, false, false));
+    g.add(makeBox(bodyW * 0.34, retailH * 0.78, 0.05, darkEntry, bodyW * 0.26, baseY + retailH * 0.4, bodyD * 0.5 + 0.02, false, false));
+    // Subtle yellow height-clearance bar over entry
+    g.add(makeBox(bodyW * 0.34, 0.03, 0.06, getStandardMaterial('#e5b94c', 0.6, 0.0), bodyW * 0.26, baseY + retailH * 0.8, bodyD * 0.5 + 0.03, false, false));
+    baseY += retailH;
+  } else {
+    // Ground-level vehicle entry portal directly into the first deck
+    g.add(makeBox(bodyW * 0.38, 0.24, 0.05, darkEntry, bodyW * 0.2, baseY + 0.13, bodyD * 0.5 + 0.015, false, false));
+  }
+
+  // Main multi-level parking deck body with procedural open-deck texture
+  const deckH = deckLevels * levelH;
+  const deckMat = getParkingDeckMaterial({ style, color, levels: deckLevels, isNight });
+  const roofAsphalt = getAsphaltMaterial();
+  const solidMat = getStandardMaterial(color, 0.85, 0.05);
+  const deckMats = [deckMat, deckMat, roofAsphalt, solidMat, deckMat, deckMat];
+
+  const tower = new THREE.Mesh(UNIT_BOX, deckMats);
+  tower.scale.set(bodyW, deckH, bodyD);
+  tower.position.set(0, baseY + deckH * 0.5, 0);
+  tower.castShadow = true;
+  tower.receiveShadow = true;
+  g.add(tower);
+
+  const topY = baseY + deckH;
+  // Crisp top parapet rail all around roof deck
+  const parapetMat = getStandardMaterial(color, 0.84, 0.04);
+  const pH = 0.1;
+  g.add(makeBox(bodyW + 0.04, pH, 0.07, parapetMat, 0, topY + pH * 0.5, bodyD * 0.5));
+  g.add(makeBox(bodyW + 0.04, pH, 0.07, parapetMat, 0, topY + pH * 0.5, -bodyD * 0.5));
+  g.add(makeBox(0.07, pH, bodyD, parapetMat, -bodyW * 0.5, topY + pH * 0.5, 0));
+  g.add(makeBox(0.07, pH, bodyD, parapetMat, bodyW * 0.5, topY + pH * 0.5, 0));
+
+  // Corner glass-and-concrete elevator/stair core tower rising slightly above the top deck
+  const coreH = baseY + deckH + 0.34;
+  const coreGlass = isNight
+    ? getStandardMaterial('#d8ecff', 0.25, 0.2, '#99ccff', 1.2)
+    : getStandardMaterial('#6488a3', 0.22, 0.35);
+  const cx = -bodyW * 0.5 + 0.2;
+  const cz = bodyD * 0.5 - 0.18;
+  g.add(makeBox(0.34, coreH, 0.34, parapetMat, cx, coreH * 0.5 + 0.04, cz));
+  g.add(makeBox(0.22, coreH - 0.18, 0.36, coreGlass, cx, coreH * 0.5 + 0.04, cz, false, false));
+
+  // Illuminated blue "P" parking sign mounted cleanly on the stair core / front corner
+  if (opts.pSign) {
+    const signMat = getParkingSignMaterial(isNight);
+    g.add(makeBox(0.32, 0.32, 0.08, signMat, cx, coreH + 0.2, cz + 0.16, false, false));
+  }
+
+  // Roof deck features: Open Rooftop Parking | Solar Canopy | Rooftop Pocket Park
+  if (roofFeature === 'solar') {
+    makeSolarCanopy(g, 0.12, topY, -bodyD * 0.22, bodyW * 0.68, bodyD * 0.34, 0.14);
+    makeSolarCanopy(g, 0.12, topY, bodyD * 0.22, bodyW * 0.68, bodyD * 0.34, 0.14);
+  } else if (roofFeature === 'green') {
+    g.add(makeBox(bodyW - 0.18, 0.05, bodyD - 0.18, getStandardMaterial('#5c9652', 0.9, 0.0), 0, topY + 0.03, 0, false, true));
+    makeTree(g, 0.28, -0.24, 0.5, 'spring');
+    makeTree(g, -0.1, 0.24, 0.44, 'spring');
+    makeTree(g, 0.46, 0.26, 0.38, 'spring');
+  } else {
+    // Painted parking stripes + parked cars + rooftop light pole
+    const stripeMat = getStandardMaterial('#e8e4d8', 0.75, 0.0);
+    for (const bx of [-0.36, 0, 0.36]) {
+      g.add(makeBox(0.03, 0.008, 0.38, stripeMat, bx + 0.16, topY + 0.006, -bodyD * 0.26, false, false));
+      g.add(makeBox(0.03, 0.008, 0.38, stripeMat, bx + 0.16, topY + 0.006, bodyD * 0.26, false, false));
+    }
+    makeParkedCar(g, -0.18, topY + 0.005, -bodyD * 0.26, 0, floors);
+    makeParkedCar(g, 0.36, topY + 0.005, -bodyD * 0.26, Math.PI, floors + 2);
+    makeParkedCar(g, 0.36, topY + 0.005, bodyD * 0.26, 0, floors + 4);
+    makeStreetLamp(g, bodyW * 0.38, -bodyD * 0.38, isNight);
+    // Adjust lamp elevation onto roof deck
+    const lampObjs = g.children.slice(-2);
+    for (const o of lampObjs) o.position.y += topY;
+  }
+
+  // Subtle decorative edge trim
+  g.add(makeBox(bodyW + 0.04, 0.03, bodyD + 0.04, frameMat, 0, topY + pH, 0, false, false));
+  return g;
+}
+
+// ============================================================================
+// 12. SURFACE PARKING LOT (Standard, EV Supercharger, Tree-Island Eco, Solar)
+// ============================================================================
+function buildParkingLot(opts, isNight) {
+  const g = new THREE.Group();
+  const s = TILE_SIZE;
+  const layout = opts.layout || 'standard';
+  const occupancy = opts.occupancy || 'busy';
+
+  const curbMat = getStandardMaterial('#c6c1b7', 0.88, 0.02);
+  const asphaltMat = getAsphaltMaterial();
+  const lineMat = getStandardMaterial(layout === 'ev' ? '#52c7a8' : '#eae6da', 0.72, 0.0);
+
+  // Full tile concrete apron + inset asphalt lot
+  g.add(makeBox(s, 0.07, s, curbMat, 0, 0.035, 0, false, true));
+  g.add(makeBox(s - 0.16, 0.02, s - 0.16, asphaltMat, 0, 0.076, 0, false, true));
+
+  const markY = 0.089;
+  // Two rows of parking bays (north & south) flanking a central drive aisle
+  const slotXs = layout === 'shaded' ? [-0.34, 0.04, 0.42] : [-0.66, -0.26, 0.14, 0.54];
+  for (const sx of slotXs) {
+    g.add(makeBox(0.03, 0.008, 0.5, lineMat, sx - 0.18, markY, -0.58, false, false));
+    g.add(makeBox(0.03, 0.008, 0.5, lineMat, sx - 0.18, markY, 0.58, false, false));
+  }
+  // Right end boundary line
+  const lastX = slotXs[slotXs.length - 1] + 0.2;
+  g.add(makeBox(0.03, 0.008, 0.5, lineMat, lastX, markY, -0.58, false, false));
+  g.add(makeBox(0.03, 0.008, 0.5, lineMat, lastX, markY, 0.58, false, false));
+
+  // Tree-island eco planters on shaded layout
+  if (layout === 'shaded') {
+    const soilMat = getStandardMaterial('#5c8e4d', 0.92, 0.0);
+    g.add(makeBox(0.32, 0.05, 0.54, curbMat, -0.72, 0.095, -0.56, false, true));
+    g.add(makeBox(0.24, 0.06, 0.46, soilMat, -0.72, 0.098, -0.56, false, true));
+    makeTree(g, -0.72, -0.56, 0.55, 'spring');
+
+    g.add(makeBox(0.32, 0.05, 0.54, curbMat, 0.72, 0.095, 0.56, false, true));
+    g.add(makeBox(0.24, 0.06, 0.46, soilMat, 0.72, 0.098, 0.56, false, true));
+    makeTree(g, 0.72, 0.56, 0.52, 'spring');
+  }
+
+  // EV fast-charging pedestals along the north curb
+  if (layout === 'ev') {
+    const postMat = getStandardMaterial('#e5eaef', 0.45, 0.2);
+    const ledMat = isNight
+      ? getStandardMaterial('#56f0c8', 0.2, 0.0, '#2be0b0', 2.4)
+      : getStandardMaterial('#289e82', 0.3, 0.1);
+    for (const sx of slotXs) {
+      g.add(makeBox(0.09, 0.24, 0.07, postMat, sx, 0.2, -0.84, true, false));
+      g.add(makeBox(0.07, 0.06, 0.08, ledMat, sx, 0.26, -0.84, false, false));
+    }
+  }
+
+  // Parked cars based on occupancy
+  const allSpots = [];
+  slotXs.forEach((sx, i) => {
+    allSpots.push([sx, -0.56, 0, i]);
+    allSpots.push([sx, 0.56, Math.PI, i + 3]);
+  });
+  const count = occupancy === 'empty' ? 0 : occupancy === 'light' ? 2 : occupancy === 'full' ? allSpots.length : Math.min(5, allSpots.length - 1);
+  for (let i = 0; i < count; i++) {
+    const [cx, cz, rot, col] = allSpots[i];
+    makeParkedCar(g, cx, 0.086, cz, rot, col);
+  }
+
+  // Optional solar carport canopies shading both rows
+  if (opts.solarCanopy) {
+    makeSolarCanopy(g, 0, 0.086, -0.56, 1.56, 0.56, 0.16);
+    makeSolarCanopy(g, 0, 0.086, 0.56, 1.56, 0.56, -0.16);
+  }
+
+  // Lot lighting pole
+  if (opts.lamps && !opts.solarCanopy) {
+    makeStreetLamp(g, 0.8, -0.82, isNight);
+    makeStreetLamp(g, -0.8, 0.82, isNight);
+  }
+
+  return g;
+}
+
+// ============================================================================
+// 13. TRANSIT & MOBILITY HUB (Metro Glass Pavilion / Bus Terminal / Bike-Share)
+// ============================================================================
+function buildTransitHub(opts, isNight) {
+  const g = new THREE.Group();
+  const s = TILE_SIZE;
+  const hubType = opts.hubType || 'metro';
+  const accent = opts.brandColor || '#225c8a';
+
+  g.add(makeBox(s, 0.09, s, getPlazaStoneMaterial(), 0, 0.045, 0, false, true));
+  const steelMat = getStandardMaterial('#38414d', 0.42, 0.52);
+  const accentMat = getStandardMaterial(accent, 0.55, 0.12);
+  const glassMat = isNight
+    ? getStandardMaterial('#d8f0ff', 0.2, 0.15, '#9ed6ff', 1.35)
+    : getStandardMaterial('#6f9bb8', 0.18, 0.35);
+
+  if (hubType === 'metro') {
+    // Recessed stairwell pit + sweeping cantilevered glass-and-steel metro pavilion
+    g.add(makeBox(1.16, 0.04, 0.84, getStandardMaterial('#262d36', 0.8, 0.1), 0, 0.08, -0.04, false, true));
+    g.add(makeBox(1.24, 0.32, 0.06, glassMat, 0, 0.25, -0.46));
+    g.add(makeBox(0.06, 0.32, 0.9, glassMat, -0.62, 0.25, -0.04));
+    g.add(makeBox(0.06, 0.32, 0.9, glassMat, 0.62, 0.25, -0.04));
+    // Sculptural pitched canopy roof
+    const canopy = makeBox(1.5, 0.07, 1.18, glassMat, 0, 0.68, -0.02);
+    canopy.rotation.x = -0.14;
+    g.add(canopy);
+    const fascia = makeBox(1.54, 0.09, 0.12, accentMat, 0, 0.76, 0.55);
+    g.add(fascia);
+    for (const px of [-0.62, 0.62]) {
+      g.add(makeCyl(0.035, 0.04, 0.64, steelMat, px, 0.4, -0.44));
+      g.add(makeCyl(0.035, 0.04, 0.72, steelMat, px, 0.44, 0.44));
+    }
+    // Illuminated Metro totem pylon
+    g.add(makeBox(0.14, 1.15, 0.14, steelMat, -0.78, 0.66, 0.68));
+    const globeMat = isNight
+      ? getStandardMaterial('#ffffff', 0.2, 0.0, accent, 2.2)
+      : accentMat;
+    g.add(makeBox(0.24, 0.24, 0.24, globeMat, -0.78, 1.24, 0.68, false, false));
+    makeBench(g, 0.42, 0.72, 0);
+  } else if (hubType === 'bus') {
+    // Dedicated BRT pull-in asphalt bay + modern bus shelter & info totem
+    g.add(makeBox(s, 0.02, 0.86, getAsphaltMaterial(), 0, 0.092, 0.46, false, true));
+    g.add(makeBox(s - 0.1, 0.01, 0.06, accentMat, 0, 0.104, 0.04, false, false));
+    // Shelter canopy
+    g.add(makeBox(1.5, 0.07, 0.66, steelMat, 0, 0.66, -0.42));
+    g.add(makeBox(1.52, 0.08, 0.08, accentMat, 0, 0.7, -0.1));
+    g.add(makeBox(1.42, 0.48, 0.04, glassMat, 0, 0.36, -0.7));
+    for (const px of [-0.66, 0, 0.66]) {
+      g.add(makeCyl(0.03, 0.03, 0.58, steelMat, px, 0.38, -0.68));
+    }
+    makeBench(g, -0.32, -0.46, 0);
+    makeBench(g, 0.32, -0.46, 0);
+    // Digital route display board
+    const boardGlow = isNight
+      ? getStandardMaterial('#fff0c4', 0.2, 0.0, '#ffd470', 1.8)
+      : getStandardMaterial('#2a3542', 0.3, 0.2);
+    g.add(makeBox(0.24, 0.56, 0.08, steelMat, 0.78, 0.38, -0.26));
+    g.add(makeBox(0.18, 0.34, 0.09, boardGlow, 0.78, 0.44, -0.26, false, false));
+  } else {
+    // E-Bike Share Mobility Dock (covered rack + 6 sleek docked e-bikes + kiosk)
+    g.add(makeBox(1.62, 0.05, 0.76, steelMat, 0, 0.56, -0.14));
+    g.add(makeBox(1.64, 0.07, 0.08, accentMat, 0, 0.59, 0.22));
+    for (const px of [-0.72, 0.72]) {
+      g.add(makeCyl(0.03, 0.03, 0.48, steelMat, px, 0.32, -0.42));
+    }
+    // Dock rail + 6 stylized bikes
+    g.add(makeBox(1.44, 0.08, 0.14, steelMat, 0, 0.13, -0.36));
+    const wheelMat = getStandardMaterial('#262c34', 0.85, 0.05);
+    for (let i = 0; i < 6; i++) {
+      const bx = -0.58 + i * 0.23;
+      g.add(makeBox(0.04, 0.16, 0.34, accentMat, bx, 0.22, -0.1, true, false));
+      g.add(makeBox(0.05, 0.11, 0.11, wheelMat, bx, 0.15, 0.04, false, false));
+    }
+    // Rental kiosk + greenery
+    g.add(makeBox(0.2, 0.46, 0.16, accentMat, -0.74, 0.32, 0.54));
+    makeTree(g, 0.68, 0.58, 0.56, 'spring');
+    makeBench(g, 0.12, 0.62, 0);
+  }
+  return g;
+}
+
+// ============================================================================
+// 14. MAJOR GROCERY STORE (Supermarket / Organic Market Hall / Supercenter)
+// ============================================================================
+function buildGroceryStore(opts, isNight) {
+  const g = new THREE.Group();
+  const s = TILE_SIZE;
+  const format = opts.format || 'supermarket';
+  const density = opts.density || 'medium';
+  const brand = opts.brandColor || '#2e7d4f';
+  const wallColor = opts.color || '#dfd7c8';
+
+  // Concrete apron + front drop-off walkway
+  g.add(makeBox(s, 0.08, s, getPlazaStoneMaterial(), 0, 0.04, 0, false, true));
+
+  const scaleW = density === 'low' ? 0.82 : density === 'high' ? 1.08 : 0.96;
+  const bodyW = Math.min(1.88, (format === 'hypermarket' ? 1.82 : 1.66) * scaleW);
+  const bodyD = Math.min(1.48, (format === 'hypermarket' ? 1.38 : 1.2) * scaleW);
+  const bodyH = format === 'hypermarket' ? 0.84 : format === 'organic' ? 0.68 : 0.74;
+  const bodyZ = -0.18;
+
+  const wallMat = getStandardMaterial(wallColor, 0.82, 0.04);
+  const brandMat = getStandardMaterial(brand, 0.58, 0.08);
+  const roofMat = getStandardMaterial('#6f7782', 0.84, 0.08);
+  const frameMat = getStandardMaterial('#3d4652', 0.48, 0.38);
+  const glassMat = isNight
+    ? getStandardMaterial('#fff1c9', 0.2, 0.1, '#ffd982', 1.6)
+    : getStandardMaterial('#4b6f8a', 0.2, 0.32);
+
+  // Main market box
+  g.add(makeBox(bodyW, bodyH, bodyD, wallMat, 0, 0.08 + bodyH * 0.5, bodyZ));
+  const topY = 0.08 + bodyH;
+  const frontZ = bodyZ + bodyD * 0.5;
+
+  // Bold illuminated brand fascia band across the front facade
+  const signGlow = isNight
+    ? getStandardMaterial(brand, 0.3, 0.08, brand, 1.35)
+    : brandMat;
+  g.add(makeBox(bodyW + 0.05, 0.18, bodyD + 0.04, brandMat, 0, topY - 0.06, bodyZ));
+  g.add(makeBox(bodyW * 0.74, 0.13, 0.05, signGlow, 0, topY + 0.04, frontZ + 0.03, false, false));
+
+  // Grand double-height glass entrance vestibule
+  const vestW = format === 'hypermarket' ? bodyW * 0.56 : bodyW * 0.44;
+  g.add(makeBox(vestW, bodyH * 0.72, 0.18, glassMat, 0, 0.08 + bodyH * 0.36, frontZ + 0.08, false, false));
+  g.add(makeBox(vestW + 0.14, 0.07, 0.34, frameMat, 0, 0.08 + bodyH * 0.74, frontZ + 0.15));
+
+  // Format-specific architectural character
+  if (format === 'organic') {
+    // Warm timber gable clerestory hall roof + green wood trim
+    const woodMat = getStandardMaterial('#966844', 0.8, 0.03);
+    const roofPeak = new THREE.Mesh(new THREE.ConeGeometry(bodyW * 0.62, 0.44, 4), woodMat);
+    roofPeak.rotation.y = Math.PI * 0.25;
+    roofPeak.position.set(0, topY + 0.22, bodyZ);
+    roofPeak.scale.set(1.12, 1, bodyD / bodyW);
+    roofPeak.castShadow = true;
+    g.add(roofPeak);
+    makeTree(g, -0.78, 0.74, 0.52, 'spring');
+    makeTree(g, 0.78, 0.74, 0.48, 'spring');
+  } else if (format === 'hypermarket') {
+    // Massive supercenter clerestory ridge + twin rooftop HVAC banks + tall brand pylon sign
+    g.add(makeBox(bodyW * 0.76, 0.18, 0.34, glassMat, 0, topY + 0.11, bodyZ, false, false));
+    g.add(makeBox(bodyW * 0.8, 0.05, 0.4, roofMat, 0, topY + 0.21, bodyZ));
+    g.add(makeBox(0.32, 0.16, 0.24, roofMat, -0.52, topY + 0.1, bodyZ - 0.32));
+    g.add(makeBox(0.32, 0.16, 0.24, roofMat, 0.52, topY + 0.1, bodyZ - 0.32));
+    // Tall roadside pylon sign at front-right corner
+    g.add(makeCyl(0.035, 0.045, 1.15, frameMat, 0.8, 0.65, 0.76));
+    g.add(makeBox(0.36, 0.24, 0.08, signGlow, 0.8, 1.14, 0.76, false, false));
+  } else {
+    // Neighborhood Supermarket with sunlit clerestory skylight monitor & rooftop HVAC
+    g.add(makeBox(bodyW * 0.54, 0.16, 0.34, glassMat, 0, topY + 0.1, bodyZ + 0.08, false, false));
+    g.add(makeBox(bodyW * 0.58, 0.05, 0.38, frameMat, 0, topY + 0.19, bodyZ + 0.08));
+    g.add(makeBox(0.3, 0.14, 0.24, roofMat, -0.46, topY + 0.09, bodyZ - 0.28));
+  }
+
+  // Optional commercial solar array on flat roofs
+  if (opts.solar && format !== 'organic') {
+    makeSolarCanopy(g, 0, topY + 0.02, bodyZ - 0.22, bodyW * 0.72, 0.34, 0.14);
+  }
+
+  // Front shopping cart corral & seasonal outdoor produce / flower stand
+  if (opts.outdoorDisplay) {
+    const awningMat = getStandardMaterial(brand, 0.76, 0.02);
+    // Cart corral on left front apron
+    g.add(makeBox(0.34, 0.14, 0.26, frameMat, -0.58, 0.15, 0.68));
+    g.add(makeBox(0.38, 0.04, 0.3, awningMat, -0.58, 0.26, 0.68));
+    // Fresh produce/flower display crates on right front apron
+    g.add(makeBox(0.36, 0.12, 0.22, getStandardMaterial('#8d6241', 0.84, 0.0), 0.52, 0.14, 0.64));
+    g.add(makeBox(0.14, 0.08, 0.16, getStandardMaterial('#d96b43', 0.82, 0.0), 0.44, 0.22, 0.64));
+    g.add(makeBox(0.14, 0.08, 0.16, getStandardMaterial('#5ca34b', 0.82, 0.0), 0.6, 0.22, 0.64));
+  }
+
+  return g;
+}
+
+// ============================================================================
+// 15. STANDALONE RETAIL STORE (Strip Mall / Big-Box / Department / Pharmacy / Diner)
+// ============================================================================
+function buildRetailStore(opts, isNight) {
+  const g = new THREE.Group();
+  const s = TILE_SIZE;
+  const storeType = opts.storeType || 'strip';
+  const floors = Math.max(1, Math.min(3, Number(opts.floors) || 1));
+  const density = opts.density || 'medium';
+  const brand = opts.brandColor || '#b83a34';
+  const wallColor = opts.color || '#dfd7c8';
+
+  g.add(makeBox(s, 0.08, s, getPlazaStoneMaterial(), 0, 0.04, 0, false, true));
+
+  const scaleW = density === 'low' ? 0.82 : density === 'high' ? 1.08 : 0.96;
+  const wallMat = getStandardMaterial(wallColor, 0.82, 0.04);
+  const brandMat = getStandardMaterial(brand, 0.6, 0.08);
+  const frameMat = getStandardMaterial('#3d4652', 0.5, 0.35);
+  const glassMat = isNight
+    ? getStandardMaterial('#ffefc2', 0.2, 0.1, '#ffd67d', 1.65)
+    : getStandardMaterial('#486882', 0.2, 0.3);
+  const signMat = opts.signage && isNight
+    ? getStandardMaterial(brand, 0.25, 0.05, brand, 1.5)
+    : brandMat;
+
+  if (storeType === 'strip') {
+    // 3 side-by-side boutique retail bays with distinct awnings & bright storefront windows
+    const totalW = Math.min(1.86, 1.7 * scaleW);
+    const bodyD = 1.08;
+    const bodyH = 0.56 + (floors - 1) * 0.34;
+    const bodyZ = -0.22;
+    const facadeMat = floors > 1
+      ? getFacadeMaterial({ style: 'midcentury', color: wallColor, cols: 4, rows: floors, isNight })
+      : wallMat;
+    g.add(makeBox(totalW, bodyH, bodyD, facadeMat, 0, 0.08 + bodyH * 0.5, bodyZ));
+    g.add(makeBox(totalW + 0.06, 0.09, bodyD + 0.06, frameMat, 0, 0.08 + bodyH + 0.04, bodyZ));
+
+    const unitColors = [brand, '#2f6f4e', '#225c8a'];
+    const bayW = totalW / 3;
+    for (let i = 0; i < 3; i++) {
+      const bx = -totalW * 0.5 + bayW * (i + 0.5);
+      const cMat = getStandardMaterial(unitColors[i], 0.74, 0.04);
+      g.add(makeBox(bayW - 0.1, 0.3, 0.04, glassMat, bx, 0.27, bodyZ + bodyD * 0.5 + 0.01, false, false));
+      const awn = makeBox(bayW - 0.05, 0.05, 0.26, cMat, bx, 0.48, bodyZ + bodyD * 0.5 + 0.12);
+      awn.rotation.x = 0.3;
+      g.add(awn);
+      if (opts.signage) {
+        const sGlow = isNight ? getStandardMaterial(unitColors[i], 0.25, 0.05, unitColors[i], 1.4) : cMat;
+        g.add(makeBox(bayW - 0.14, 0.09, 0.04, sGlow, bx, 0.58, bodyZ + bodyD * 0.5 + 0.02, false, false));
+      }
+    }
+    makeBench(g, -0.5, 0.66, 0);
+    makeBench(g, 0.5, 0.66, 0);
+  } else if (storeType === 'bigbox') {
+    // Big-Box Electronics / Home Improvement warehouse with bold colored architectural portal
+    const bodyW = Math.min(1.88, 1.78 * scaleW);
+    const bodyD = Math.min(1.48, 1.36 * scaleW);
+    const bodyH = 0.76 + (floors - 1) * 0.32;
+    const bodyZ = -0.14;
+    g.add(makeBox(bodyW, bodyH, bodyD, wallMat, 0, 0.08 + bodyH * 0.5, bodyZ));
+    // Raised brand entry tower portal
+    const portalW = bodyW * 0.42;
+    const portalH = bodyH + 0.28;
+    g.add(makeBox(portalW, portalH, 0.26, brandMat, 0, 0.08 + portalH * 0.5, bodyZ + bodyD * 0.5 + 0.04));
+    g.add(makeBox(portalW * 0.72, 0.36, 0.05, glassMat, 0, 0.28, bodyZ + bodyD * 0.5 + 0.18, false, false));
+    if (opts.signage) {
+      g.add(makeBox(portalW * 0.82, 0.16, 0.06, signMat, 0, 0.08 + portalH - 0.16, bodyZ + bodyD * 0.5 + 0.18, false, false));
+    }
+    // Roof mechanical units
+    g.add(makeBox(0.36, 0.16, 0.28, frameMat, -0.48, 0.08 + bodyH + 0.08, bodyZ - 0.2));
+    g.add(makeBox(0.36, 0.16, 0.28, frameMat, 0.48, 0.08 + bodyH + 0.08, bodyZ - 0.2));
+  } else if (storeType === 'department') {
+    // Architectural multi-story Flagship Department / Apparel Store
+    const bodyW = Math.min(1.82, 1.62 * scaleW);
+    const bodyD = Math.min(1.56, 1.42 * scaleW);
+    const effFloors = Math.max(2, floors);
+    const bodyH = effFloors * 0.44 + 0.16;
+    const facadeMat = getFacadeMaterial({ style: 'modern', color: wallColor, cols: 4, rows: effFloors, isNight, isGlass: true });
+    g.add(makeBox(bodyW, bodyH, bodyD, facadeMat, 0, 0.08 + bodyH * 0.5, -0.06));
+    // Sculptural cornice & glowing storefront vitrines
+    g.add(makeBox(bodyW + 0.08, 0.1, bodyD + 0.08, frameMat, 0, 0.08 + bodyH + 0.04, -0.06));
+    g.add(makeBox(bodyW * 0.86, 0.38, 0.06, glassMat, 0, 0.29, -0.06 + bodyD * 0.5 + 0.02, false, false));
+    g.add(makeBox(bodyW * 0.56, 0.07, 0.34, brandMat, 0, 0.54, -0.06 + bodyD * 0.5 + 0.15));
+    if (opts.signage) {
+      g.add(makeBox(bodyW * 0.5, 0.14, 0.05, signMat, 0, 0.08 + bodyH - 0.14, -0.06 + bodyD * 0.5 + 0.04, false, false));
+    }
+  } else if (storeType === 'pharmacy') {
+    // Corner Pharmacy / Market with angled entrance tower & covered side drive-thru lane
+    const bodyW = Math.min(1.36, 1.24 * scaleW);
+    const bodyD = 1.26;
+    const bodyH = 0.62 + (floors - 1) * 0.3;
+    g.add(makeBox(bodyW, bodyH, bodyD, wallMat, -0.2, 0.08 + bodyH * 0.5, -0.14));
+    // Colored band & corner glass entry
+    g.add(makeBox(bodyW + 0.04, 0.14, bodyD + 0.04, signMat, -0.2, 0.08 + bodyH - 0.06, -0.14));
+    g.add(makeBox(0.54, 0.34, 0.06, glassMat, -0.2, 0.28, -0.14 + bodyD * 0.5 + 0.02, false, false));
+    // Side drive-thru lane canopy on right side
+    g.add(makeBox(0.46, 0.02, 1.56, getAsphaltMaterial(), 0.68, 0.085, 0, false, true));
+    g.add(makeBox(0.48, 0.07, 0.86, brandMat, 0.64, 0.54, -0.14));
+    g.add(makeCyl(0.03, 0.03, 0.44, frameMat, 0.84, 0.3, -0.46));
+    g.add(makeCyl(0.03, 0.03, 0.44, frameMat, 0.84, 0.3, 0.18));
+  } else {
+    // Standalone Bistro / Diner with dramatic cantilevered roof, wraparound glass & patio
+    const bodyW = Math.min(1.44, 1.3 * scaleW);
+    const bodyD = 1.06;
+    const bodyH = 0.54 + (floors - 1) * 0.32;
+    g.add(makeBox(bodyW, bodyH, bodyD, wallMat, 0, 0.08 + bodyH * 0.5, -0.22));
+    // Wraparound glowing dining glass
+    g.add(makeBox(bodyW + 0.04, 0.3, bodyD * 0.62, glassMat, 0, 0.28, -0.06, false, false));
+    // Sweeping cantilevered butterfly / tilted modern roof
+    const roof = makeBox(bodyW + 0.34, 0.08, bodyD + 0.4, brandMat, 0, 0.08 + bodyH + 0.08, -0.14);
+    roof.rotation.x = -0.08;
+    g.add(roof);
+    if (opts.signage) {
+      g.add(makeBox(0.64, 0.16, 0.06, signMat, 0, 0.08 + bodyH + 0.22, 0.34, false, false));
+    }
+    // Patio umbrella tables out front
+    for (const px of [-0.46, 0.46]) {
+      g.add(makeCyl(0.13, 0.13, 0.03, getStandardMaterial('#f2eee6', 0.7, 0.04), px, 0.22, 0.66));
+      g.add(makeCyl(0.02, 0.02, 0.3, frameMat, px, 0.24, 0.66));
+      const umb = new THREE.Mesh(UNIT_CONE, brandMat);
+      umb.scale.set(0.38, 0.14, 0.38);
+      umb.position.set(px, 0.44, 0.66);
+      umb.castShadow = true;
+      g.add(umb);
+    }
+  }
+
+  if (density === 'low') {
+    makeTree(g, -0.78, 0.74, 0.48, 'spring');
+  }
+  return g;
+}
+
+// ============================================================================
+// 16. EV HUB & SERVICE STATION (EV Supercharger Lounge / Classic Fuel Mart)
+// ============================================================================
+function buildServiceStation(opts, isNight) {
+  const g = new THREE.Group();
+  const s = TILE_SIZE;
+  const stationType = opts.stationType || 'ev_lounge';
+  const brand = opts.brandColor || '#237a82';
+
+  const curbMat = getStandardMaterial('#c6c1b7', 0.88, 0.02);
+  const asphaltMat = getAsphaltMaterial();
+  const frameMat = getStandardMaterial('#3d4652', 0.45, 0.42);
+  const brandMat = getStandardMaterial(brand, 0.55, 0.1);
+  const canopyGlow = isNight
+    ? getStandardMaterial('#fff4d6', 0.2, 0.0, '#ffe099', 1.7)
+    : getStandardMaterial('#e8e4da', 0.6, 0.05);
+  const shopGlass = isNight
+    ? getStandardMaterial('#ffebb3', 0.2, 0.1, '#ffd478', 1.55)
+    : getStandardMaterial('#486882', 0.2, 0.3);
+
+  // Full paved forecourt
+  g.add(makeBox(s, 0.07, s, curbMat, 0, 0.035, 0, false, true));
+  g.add(makeBox(s - 0.12, 0.02, s - 0.12, asphaltMat, 0, 0.076, 0, false, true));
+
+  // Rear Convenience Store / EV Café Lounge building
+  const shopWall = getStandardMaterial(stationType === 'ev_lounge' ? '#d8cfc0' : '#e4e0d7', 0.8, 0.04);
+  g.add(makeBox(1.56, 0.48, 0.56, shopWall, 0, 0.32, -0.62));
+  g.add(makeBox(1.6, 0.08, 0.6, brandMat, 0, 0.59, -0.62));
+  g.add(makeBox(1.18, 0.28, 0.05, shopGlass, 0, 0.28, -0.33, false, false));
+
+  // Sleek illuminated forecourt canopy over charging / pump islands
+  const canopyY = 0.62;
+  const canopyTop = stationType === 'ev_lounge'
+    ? getStandardMaterial('#8f6845', 0.72, 0.05)
+    : getStandardMaterial('#eaedf0', 0.65, 0.12);
+  g.add(makeBox(1.54, 0.09, 0.86, canopyTop, 0, canopyY, 0.34));
+  g.add(makeBox(1.58, 0.05, 0.9, brandMat, 0, canopyY + 0.04, 0.34));
+  // Bright under-canopy ceiling lights
+  g.add(makeBox(1.32, 0.02, 0.64, canopyGlow, 0, canopyY - 0.05, 0.34, false, false));
+
+  // Support columns & islands
+  for (const ix of [-0.42, 0.42]) {
+    g.add(makeCyl(0.035, 0.04, 0.54, frameMat, ix, 0.34, 0.34));
+    g.add(makeBox(0.18, 0.05, 0.54, curbMat, ix, 0.1, 0.34, false, true));
+    // Charging pedestals or fuel dispensers
+    const dispMat = stationType === 'ev_lounge'
+      ? getStandardMaterial('#eef2f6', 0.35, 0.2)
+      : brandMat;
+    g.add(makeBox(0.1, 0.22, 0.12, dispMat, ix, 0.23, 0.18));
+    g.add(makeBox(0.1, 0.22, 0.12, dispMat, ix, 0.23, 0.5));
+    if (stationType === 'ev_lounge' && isNight) {
+      const evGlow = getStandardMaterial('#56f0c8', 0.2, 0.0, '#2be0b0', 2.4);
+      g.add(makeBox(0.11, 0.05, 0.08, evGlow, ix, 0.29, 0.18, false, false));
+      g.add(makeBox(0.11, 0.05, 0.08, evGlow, ix, 0.29, 0.5, false, false));
+    }
+  }
+
+  // One parked car charging/fueling
+  makeParkedCar(g, -0.02, 0.086, 0.34, 0, stationType === 'ev_lounge' ? 1 : 0);
+
+  // Optional solar panels atop the canopy
+  if (opts.solar) {
+    const solarMat = getStandardMaterial('#1e3a5f', 0.22, 0.55);
+    const panel = makeBox(1.38, 0.035, 0.68, solarMat, 0, canopyY + 0.09, 0.34, false, true);
+    panel.rotation.x = 0.08;
+    g.add(panel);
+  }
+
+  // Roadside totem sign
+  g.add(makeBox(0.14, 0.96, 0.08, frameMat, 0.84, 0.55, 0.84));
+  const totemGlow = isNight ? getStandardMaterial(brand, 0.25, 0.05, brand, 1.6) : brandMat;
+  g.add(makeBox(0.22, 0.34, 0.09, totemGlow, 0.84, 0.84, 0.84, false, false));
+
+  if (stationType === 'ev_lounge') {
+    makeTree(g, -0.82, 0.82, 0.44, 'spring');
+  }
+  return g;
+}
+
+// ============================================================================
 // Public Entry Point
 // ============================================================================
 export function buildTileMesh(tile, neighbors, isNight) {
@@ -1235,6 +1837,15 @@ export function buildTileMesh(tile, neighbors, isNight) {
     case 'water':
       group = buildWater(opts, neighbors, isNight);
       break;
+    case 'parking_garage':
+      group = buildParkingGarage(opts, isNight);
+      break;
+    case 'parking_lot':
+      group = buildParkingLot(opts, isNight);
+      break;
+    case 'transit':
+      group = buildTransitHub(opts, isNight);
+      break;
     case 'highrise':
       group = buildResidentialHighRise(opts, isNight);
       break;
@@ -1249,6 +1860,15 @@ export function buildTileMesh(tile, neighbors, isNight) {
       break;
     case 'shop':
       group = buildShop(opts, isNight);
+      break;
+    case 'grocery':
+      group = buildGroceryStore(opts, isNight);
+      break;
+    case 'retail':
+      group = buildRetailStore(opts, isNight);
+      break;
+    case 'service_station':
+      group = buildServiceStation(opts, isNight);
       break;
     case 'civic':
       group = buildCivic(opts, isNight);

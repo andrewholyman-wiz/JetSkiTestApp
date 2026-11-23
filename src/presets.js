@@ -79,13 +79,17 @@ export function buildHarborviewPreset() {
   list.push(tile(10, 15, 'plaza', { centerpiece: 'kiosk' }));
   list.push(tile(11, 15, 'park', { theme: 'meadow', season: 'spring' }));
 
-  // Cozy Townhouse Neighborhood (north & east edge)
+  // Cozy Townhouse Neighborhood & Retail/Parking Anchors (north & east edge)
   list.push(tile(8, 6, 'townhouse', { floors: 2, color: '#dfd7c8', roofColor: '#9c4f3d', garden: true }, 0));
   list.push(tile(9, 6, 'townhouse', { floors: 2, color: '#d4a66a', roofColor: '#47505c', garden: true }, 0));
   list.push(tile(10, 6, 'townhouse', { floors: 3, color: '#9eb09f', roofColor: '#4f8574', garden: true }, 0));
   list.push(tile(11, 6, 'townhouse', { floors: 2, color: '#b96b52', roofColor: '#47505c', garden: true }, 0));
+  list.push(tile(14, 6, 'grocery', { format: 'supermarket', density: 'medium', brandColor: '#2e7d4f', color: '#dfd7c8', outdoorDisplay: true, solar: true }, 0));
+  list.push(tile(15, 6, 'parking_lot', { layout: 'ev', occupancy: 'busy', solarCanopy: false, lamps: true }, 0));
+  list.push(tile(17, 8, 'parking_garage', { floors: 5, density: 'medium', style: 'louvered', color: '#bfb9ad', roofFeature: 'solar', groundRetail: true, pSign: true }, 270));
   list.push(tile(17, 9, 'townhouse', { floors: 2, color: '#dfd7c8', roofColor: '#9c4f3d', garden: true }, 270));
   list.push(tile(17, 10, 'townhouse', { floors: 2, color: '#d4a66a', roofColor: '#47505c', garden: true }, 270));
+  list.push(tile(13, 10, 'transit', { hubType: 'metro', brandColor: '#225c8a' }, 0));
   list.push(tile(17, 13, 'apartment', { floors: 5, style: 'timber', color: '#dfd7c8', roofStyle: 'green', balconies: true, groundRetail: true }, 270));
   list.push(tile(18, 13, 'park', { theme: 'courts', season: 'summer' }));
 
@@ -220,8 +224,85 @@ export function buildMetropolisPreset() {
   return list;
 }
 
+// ============================================================================
+// Preset 4: Retail & Town Center — Shopping district, grocery anchors & parking
+// ============================================================================
+export function buildRetailHubPreset() {
+  const list = [];
+
+  // Main arterial boulevards & cross streets
+  for (let x = 4; x <= 19; x++) {
+    list.push(tile(x, 6, 'road', { lamps: x % 2 === 0 }));
+    list.push(tile(x, 11, 'road', { lamps: x % 2 === 0, boulevardTrees: x % 3 === 0 }));
+    list.push(tile(x, 16, 'road', { lamps: x % 2 === 1 }));
+  }
+  for (let z = 7; z <= 15; z++) {
+    if (z !== 11) {
+      list.push(tile(5, z, 'road', { lamps: z % 2 === 0 }));
+      list.push(tile(11, z, 'road', { lamps: z % 2 === 1 }));
+      list.push(tile(18, z, 'road', { lamps: z % 2 === 0 }));
+    }
+  }
+
+  // Central car-free shopping promenade
+  for (let x = 6; x <= 17; x++) {
+    if (x !== 11) {
+      list.push(tile(x, 13, 'pedestrian', { paving: 'sandstone', bikeLane: true, lamps: x % 2 === 0, planters: true }));
+    }
+  }
+
+  // North-West Anchor: Major Grocery Supercenter + Surface Lots + EV Supercharger Hub
+  list.push(tile(7, 8, 'grocery', { format: 'hypermarket', density: 'high', brandColor: '#2e7d4f', color: '#dfd7c8', outdoorDisplay: true, solar: true }, 0));
+  list.push(tile(8, 8, 'retail', { storeType: 'bigbox', floors: 1, density: 'high', brandColor: '#225c8a', color: '#dfd7c8', signage: true }, 0));
+  list.push(tile(9, 8, 'retail', { storeType: 'strip', floors: 1, density: 'high', brandColor: '#b83a34', color: '#dfd7c8', signage: true }, 0));
+  list.push(tile(10, 8, 'retail', { storeType: 'pharmacy', floors: 1, density: 'medium', brandColor: '#237a82', color: '#dfd7c8', signage: true }, 0));
+
+  list.push(tile(7, 9, 'parking_lot', { layout: 'standard', occupancy: 'full', solarCanopy: false, lamps: true }, 0));
+  list.push(tile(8, 9, 'parking_lot', { layout: 'shaded', occupancy: 'busy', solarCanopy: false, lamps: true }, 0));
+  list.push(tile(9, 9, 'parking_lot', { layout: 'ev', occupancy: 'busy', solarCanopy: true, lamps: true }, 0));
+  list.push(tile(10, 9, 'service_station', { stationType: 'ev_lounge', brandColor: '#237a82', solar: true }, 0));
+  list.push(tile(6, 9, 'retail', { storeType: 'restaurant', floors: 1, density: 'medium', brandColor: '#c98628', color: '#dfd7c8', signage: true }, 0));
+  list.push(tile(6, 8, 'service_station', { stationType: 'classic', brandColor: '#b83a34', solar: false }, 90));
+
+  // North-East Urban Retail & Multi-Level Parking Structures
+  list.push(tile(13, 8, 'parking_garage', { floors: 7, density: 'high', style: 'concrete', color: '#bfb9ad', roofFeature: 'open', groundRetail: true, pSign: true }, 0));
+  list.push(tile(14, 8, 'retail', { storeType: 'department', floors: 3, density: 'high', brandColor: '#6d4675', color: '#dfd7c8', signage: true }, 0));
+  list.push(tile(15, 8, 'grocery', { format: 'organic', density: 'medium', brandColor: '#2e7d4f', color: '#d4a66a', outdoorDisplay: true, solar: false }, 0));
+  list.push(tile(16, 8, 'parking_garage', { floors: 4, density: 'medium', style: 'louvered', color: '#dfd7c8', roofFeature: 'green', groundRetail: true, pSign: true }, 0));
+  list.push(tile(13, 9, 'transit', { hubType: 'metro', brandColor: '#225c8a' }, 0));
+  list.push(tile(14, 9, 'plaza', { centerpiece: 'clock' }));
+  list.push(tile(15, 9, 'transit', { hubType: 'bus', brandColor: '#b83a34' }, 0));
+  list.push(tile(16, 9, 'parking_garage', { floors: 6, density: 'medium', style: 'brick', color: '#b36b54', roofFeature: 'solar', groundRetail: true, pSign: true }, 0));
+
+  // South Mixed-Use Living & Pedestrian Promenade
+  list.push(tile(7, 12, 'shop', { floors: 2, density: 'high', color: '#dfd7c8', awningColor: '#2f6f4e', patio: true }, 0));
+  list.push(tile(8, 12, 'retail', { storeType: 'strip', floors: 2, density: 'medium', brandColor: '#c98628', color: '#dfd7c8', signage: true }, 0));
+  list.push(tile(9, 12, 'transit', { hubType: 'bikeshare', brandColor: '#2e7d4f' }, 0));
+  list.push(tile(13, 12, 'apartment', { floors: 10, density: 'high', style: 'brick', color: '#b96b52', roofStyle: 'green', balconies: true, groundRetail: true }, 0));
+  list.push(tile(14, 12, 'highrise', { floors: 24, density: 'medium', massing: 'point', style: 'modern', color: '#6d98b5', crown: 'penthouse', balconies: true, groundRetail: true }, 0));
+  list.push(tile(15, 12, 'office', { floors: 28, density: 'medium', massing: 'stepped', color: '#527987', crown: 'spire' }, 0));
+
+  list.push(tile(7, 14, 'park', { theme: 'fountain', season: 'spring' }));
+  list.push(tile(8, 14, 'park', { theme: 'botanical', season: 'spring' }));
+  list.push(tile(9, 14, 'apartment', { floors: 6, density: 'medium', style: 'timber', color: '#d4a66a', roofStyle: 'green', balconies: true, groundRetail: true }, 180));
+  list.push(tile(13, 14, 'apartment', { floors: 8, density: 'high', style: 'modern', color: '#dfd7c8', roofStyle: 'penthouse', balconies: true, groundRetail: true }, 180));
+  list.push(tile(14, 14, 'park', { theme: 'meadow', season: 'spring' }));
+  list.push(tile(15, 14, 'trees', { density: 'dense', season: 'summer' }));
+
+  // Green framing
+  for (const [x, z, d, s] of [
+    [4, 8, 'balanced', 'spring'], [4, 9, 'dense', 'summer'], [4, 13, 'balanced', 'pine'],
+    [19, 8, 'dense', 'autumn'], [19, 9, 'balanced', 'summer'], [19, 13, 'dense', 'spring'],
+  ]) {
+    list.push(tile(x, z, 'trees', { density: d, season: s }));
+  }
+
+  return list;
+}
+
 export function getPresetTiles(name) {
   if (name === 'metropolis') return buildMetropolisPreset();
+  if (name === 'retail_hub') return buildRetailHubPreset();
   if (name === 'riverside') return buildRiversidePreset();
   if (name === 'blank') return [];
   return buildHarborviewPreset();

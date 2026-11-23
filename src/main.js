@@ -275,12 +275,13 @@ function renderInspector() {
   rotationReadout.textContent = `${currentRotation}°`;
   selectedActions.classList.toggle('hidden', !isEditingPlaced);
 
-  // Live per-block capacity readout (Residents / Jobs) that reacts instantly to Stories & Density
+  // Live per-block capacity readout (Residents / Jobs / Parking Stalls / Height)
   const capacityCard = document.createElement('div');
   capacityCard.className = 'block-capacity-card';
   const refreshCapacityCard = () => {
     const s = def.stats(currentOptions || {});
-    if (s.residents === 0 && s.jobs === 0) {
+    const stalls = s.parking || 0;
+    if (s.residents === 0 && s.jobs === 0 && stalls === 0) {
       capacityCard.classList.add('hidden');
       return;
     }
@@ -288,7 +289,11 @@ function renderInspector() {
     const parts = [];
     if (s.residents > 0) parts.push(`<div><span class="cap-label">Residents</span><strong class="cap-val">${s.residents.toLocaleString()}</strong></div>`);
     if (s.jobs > 0) parts.push(`<div><span class="cap-label">Jobs</span><strong class="cap-val">${s.jobs.toLocaleString()}</strong></div>`);
-    if (currentOptions.floors) parts.push(`<div><span class="cap-label">Height</span><strong class="cap-val">${currentOptions.floors} fl</strong></div>`);
+    if (stalls > 0) parts.push(`<div><span class="cap-label">Stalls</span><strong class="cap-val">${stalls.toLocaleString()}</strong></div>`);
+    if (currentOptions.floors) {
+      const unit = blockType === 'parking_garage' ? 'lvl' : 'fl';
+      parts.push(`<div><span class="cap-label">${blockType === 'parking_garage' ? 'Levels' : 'Height'}</span><strong class="cap-val">${currentOptions.floors} ${unit}</strong></div>`);
+    }
     capacityCard.innerHTML = parts.join('');
   };
   refreshCapacityCard();
