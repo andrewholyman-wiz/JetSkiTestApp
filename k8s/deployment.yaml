@@ -1,0 +1,109 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-app
+  labels:
+    app.kubernetes.io/part-of: jenkins-demo-app
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jenkins-demo-app
+  namespace: demo-app
+  labels:
+    app: jenkins-demo-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: jenkins-demo-app
+  template:
+    metadata:
+      labels:
+        app: jenkins-demo-app
+    spec:
+      automountServiceAccountToken: false
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: jenkins-demo-app
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: __IMAGE_URI__
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: jenkins-demo-app-pdb
+  namespace: demo-app
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: jenkins-demo-app
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins-demo-app
+  namespace: demo-app
+  labels:
+    app: jenkins-demo-app
+spec:
+  type: LoadBalancer
+  loadBalancerSourceRanges:
+    - 104.135.202.0/24
+    - 172.0.14.225/32
+  selector:
+    app: jenkins-demo-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
