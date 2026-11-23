@@ -74,9 +74,16 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: basic-auth
+              mountPath: /etc/nginx/auth
+              readOnly: true
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: basic-auth
+          secret:
+            secretName: civitas-basic-auth
+            defaultMode: 0440
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget

@@ -1,13 +1,22 @@
+# Multi-stage production build — zero Node.js runtime in final container
+FROM public.ecr.aws/docker/library/node:22-alpine AS builder
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install --no-audit --no-fund --ignore-scripts
+
+COPY index.html vite.config.js ./
+COPY src ./src
+RUN npm run build
+
+# Hardened non-root Nginx serving static bundle on port 8080 (PSS Restricted compatible)
 FROM public.ecr.aws/docker/library/nginx:alpine
 
-ARG BUILD_NUMBER=dev
-ARG GIT_COMMIT=local
-
 COPY nginx.conf /etc/nginx/nginx.conf
-COPY index.html /usr/share/nginx/html/index.html
+COPY --from=builder /app/dist /usr/share/nginx/html
 
-RUN sed -i "s/__BUILD_NUMBER__/${BUILD_NUMBER}/g; s/__GIT_COMMIT__/${GIT_COMMIT}/g" /usr/share/nginx/html/index.html \
-    && chown -R 101:101 /usr/share/nginx/html /etc/nginx/nginx.conf
+RUN mkdir -p /etc/nginx/auth \
+    && chown -R 101:101 /usr/share/nginx/html /etc/nginx/nginx.conf /etc/nginx/auth
 
 USER 101:101
 EXPOSE 8080

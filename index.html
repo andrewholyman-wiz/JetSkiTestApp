@@ -3,27 +3,224 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>JetSkiTestApp — Wiz Secured EKS Demo</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-    .card { background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 2rem 2.5rem; max-width: 560px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
-    h1 { margin-top: 0; color: #38bdf8; font-size: 1.6rem; }
-    .badge { display: inline-block; background: #065f46; color: #6ee7b7; padding: 0.25rem 0.7rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; margin-bottom: 1rem; }
-    code { background: #0f172a; padding: 0.15rem 0.45rem; border-radius: 6px; color: #f8fafc; }
-    ul { padding-left: 1.2rem; line-height: 1.7; }
-  </style>
+  <title>Civitas Studio — Interactive 3D Small City Designer</title>
+  <meta name="description" content="Design, customize, and render a vibrant 3D small city in real time with auto-connecting roads, customizable apartments, offices, parks, and live traffic." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./src/styles.css" />
 </head>
 <body>
-  <div class="card">
-    <div class="badge">PSS Restricted &bull; Non-Root UID 101 &bull; Wiz Protected</div>
-    <h1>JetSkiTestApp (Build #__BUILD_NUMBER__)</h1>
-    <p>Deployed via <strong>GitHub &rarr; Jenkins &rarr; WizCLI &rarr; Amazon ECR &rarr; Amazon EKS</strong>.</p>
-    <ul>
-      <li><strong>Repository:</strong> <code>andrewholyman-wiz/JetSkiTestApp</code></li>
-      <li><strong>Git Commit:</strong> <code>__GIT_COMMIT__</code></li>
-      <li><strong>Build Number:</strong> <code>#__BUILD_NUMBER__</code></li>
-      <li><strong>Runtime:</strong> Hardened Nginx (UID 101, read-only rootfs, port 8080)</li>
-    </ul>
+  <div id="app">
+    <!-- Full-Viewport 3D Canvas -->
+    <main id="viewport-container" aria-label="3D City Viewport">
+      <canvas id="city-canvas"></canvas>
+    </main>
+
+    <!-- Top Floating Studio Bar -->
+    <header id="top-bar" class="hud-panel">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 21h18M5 21V7l5-3v17M10 21V11l4-2v12M14 21V5l5 2v14" />
+          </svg>
+        </div>
+        <div>
+          <h1>Civitas Studio</h1>
+          <span class="brand-sub">3D City Designer</span>
+        </div>
+      </div>
+
+      <div class="hud-divider"></div>
+
+      <!-- City Telemetry -->
+      <div class="city-metrics" role="status" aria-label="City statistics">
+        <div class="metric">
+          <span class="metric-label">Residents</span>
+          <span id="stat-residents" class="metric-value">0</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Jobs</span>
+          <span id="stat-jobs" class="metric-value">0</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Greenery</span>
+          <span id="stat-greenery" class="metric-value">0%</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Blocks</span>
+          <span id="stat-blocks" class="metric-value">0</span>
+        </div>
+      </div>
+
+      <div class="hud-divider"></div>
+
+      <!-- Time of Day Segmented Control -->
+      <div class="control-cluster" aria-label="Lighting time of day">
+        <span class="cluster-label">Light</span>
+        <div class="segmented" id="time-controls">
+          <button type="button" class="seg-btn" data-time="morning" title="Morning sun">AM</button>
+          <button type="button" class="seg-btn active" data-time="midday" title="Crisp midday">Day</button>
+          <button type="button" class="seg-btn" data-time="golden" title="Golden hour">Dusk</button>
+          <button type="button" class="seg-btn" data-time="night" title="Night illumination">Night</button>
+        </div>
+      </div>
+
+      <!-- Camera Presets -->
+      <div class="control-cluster" aria-label="Camera angle presets">
+        <span class="cluster-label">View</span>
+        <div class="segmented" id="camera-controls">
+          <button type="button" class="seg-btn active" data-cam="iso" title="Isometric overview">Iso</button>
+          <button type="button" class="seg-btn" data-cam="street" title="Low street-level view">Street</button>
+          <button type="button" class="seg-btn" data-cam="top" title="Top-down architectural plan">Plan</button>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="top-actions">
+        <button type="button" id="btn-undo" class="icon-btn" title="Undo (Cmd/Ctrl+Z)" aria-label="Undo">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14 4 9l5-5"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+        </button>
+        <button type="button" id="btn-redo" class="icon-btn" title="Redo (Cmd/Ctrl+Shift+Z)" aria-label="Redo">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 14 5-5-5-5"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg>
+        </button>
+        <select id="preset-select" class="compact-select" aria-label="Load city preset" title="Load preset layout">
+          <option value="harborview">Harborview Commons</option>
+          <option value="riverside">Riverside Grid</option>
+          <option value="blank">Blank Canvas</option>
+        </select>
+        <button type="button" id="btn-snapshot" class="text-btn" title="Download PNG render">PNG</button>
+        <button type="button" id="btn-export" class="text-btn" title="Export city JSON">Export</button>
+        <button type="button" id="btn-import" class="text-btn" title="Import city JSON">Import</button>
+        <input type="file" id="file-import" accept="application/json" hidden />
+      </div>
+    </header>
+
+    <!-- Left Studio Panel: Tools & Building Blocks -->
+    <aside id="left-panel" class="hud-panel side-panel" aria-label="Building palette">
+      <div class="panel-header">
+        <h2>Studio Palette</h2>
+        <button type="button" id="btn-toggle-left" class="collapse-btn" title="Collapse palette" aria-label="Collapse palette">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+      </div>
+
+      <div class="panel-body">
+        <!-- Primary Interaction Modes -->
+        <section class="panel-section">
+          <div class="section-title">Mode</div>
+          <div class="tool-grid" id="mode-controls">
+            <button type="button" class="tool-btn active" data-mode="build" title="Place blocks (B)">
+              <span class="tool-key">B</span>
+              <span>Build</span>
+            </button>
+            <button type="button" class="tool-btn" data-mode="select" title="Select & customize placed blocks (V)">
+              <span class="tool-key">V</span>
+              <span>Customize</span>
+            </button>
+            <button type="button" class="tool-btn" data-mode="erase" title="Bulldoze tiles (X)">
+              <span class="tool-key">X</span>
+              <span>Bulldoze</span>
+            </button>
+            <button type="button" class="tool-btn" data-mode="sample" title="Pick style from map (I)">
+              <span class="tool-key">I</span>
+              <span>Sample</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Dynamic Block Catalog (populated by main.js) -->
+        <div id="catalog-container"></div>
+      </div>
+    </aside>
+
+    <!-- Floating Re-Open Button for Left Panel -->
+    <button type="button" id="btn-reopen-left" class="reopen-btn hidden" title="Show palette">Palette</button>
+
+    <!-- Right Studio Panel: Live Block Customizer & Performance -->
+    <aside id="right-panel" class="hud-panel side-panel right-panel" aria-label="Block customizer">
+      <div class="panel-header">
+        <div>
+          <h2 id="inspector-title">Block Options</h2>
+          <p id="inspector-subtitle" class="panel-sub">Customize before placing</p>
+        </div>
+        <button type="button" id="btn-toggle-right" class="collapse-btn" title="Collapse inspector" aria-label="Collapse inspector">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+      </div>
+
+      <div class="panel-body">
+        <div id="inspector-controls"></div>
+
+        <!-- Rotation & Quick Actions -->
+        <section class="panel-section" id="rotation-section">
+          <div class="section-row">
+            <span class="section-title">Orientation</span>
+            <span id="rotation-readout" class="mono-tag">0°</span>
+          </div>
+          <div class="inline-actions">
+            <button type="button" id="btn-rotate-ccw" class="secondary-btn">Rotate -90°</button>
+            <button type="button" id="btn-rotate-cw" class="secondary-btn">Rotate +90° (R)</button>
+          </div>
+        </section>
+
+        <section class="panel-section hidden" id="selected-actions">
+          <div class="inline-actions">
+            <button type="button" id="btn-duplicate-style" class="secondary-btn">Use Style</button>
+            <button type="button" id="btn-delete-selected" class="danger-btn">Demolish</button>
+          </div>
+        </section>
+
+        <!-- Render & Performance Settings -->
+        <section class="panel-section perf-section">
+          <div class="section-title">Rendering &amp; Performance</div>
+          <div class="field">
+            <label for="quality-select">Graphics Preset</label>
+            <div class="segmented full-width" id="quality-controls">
+              <button type="button" class="seg-btn" data-quality="performance">Fast</button>
+              <button type="button" class="seg-btn active" data-quality="balanced">Balanced</button>
+              <button type="button" class="seg-btn" data-quality="high">High</button>
+            </div>
+          </div>
+          <div class="toggle-row">
+            <label for="toggle-traffic">Animated Traffic</label>
+            <input type="checkbox" id="toggle-traffic" checked />
+          </div>
+          <div class="toggle-row">
+            <label for="toggle-pedestrians">Walkers &amp; Cyclists</label>
+            <input type="checkbox" id="toggle-pedestrians" checked />
+          </div>
+          <div class="toggle-row">
+            <label for="toggle-grid">Show Tile Grid</label>
+            <input type="checkbox" id="toggle-grid" checked />
+          </div>
+        </section>
+      </div>
+    </aside>
+
+    <button type="button" id="btn-reopen-right" class="reopen-btn right hidden" title="Show customizer">Inspector</button>
+
+    <!-- Bottom Status & Controls Bar -->
+    <footer id="bottom-bar" class="hud-panel">
+      <div class="controls-hint">
+        <span><kbd>Click</kbd> Place / Select</span>
+        <span><kbd>Drag</kbd> Paint roads &amp; parks</span>
+        <span><kbd>Right-Drag</kbd> Orbit</span>
+        <span><kbd>Middle / Shift-Drag</kbd> Pan</span>
+        <span><kbd>Scroll</kbd> Zoom</span>
+        <span><kbd>R</kbd> Rotate</span>
+      </div>
+      <div class="perf-readout" aria-label="Render performance">
+        <span id="perf-fps" class="mono-pill">60 FPS</span>
+        <span id="perf-calls" class="mono-pill">0 calls</span>
+        <span id="perf-tris" class="mono-pill">0 tris</span>
+      </div>
+    </footer>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
   </div>
+
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>

@@ -69,8 +69,6 @@ pipeline {
                     set -euo pipefail
                     GIT_SHORT=$(git rev-parse --short HEAD)
                     docker build \
-                        --build-arg "BUILD_NUMBER=${BUILD_NUMBER}" \
-                        --build-arg "GIT_COMMIT=${GIT_SHORT}" \
                         -t "${IMAGE_URI}:${BUILD_NUMBER}" \
                         -t "${IMAGE_URI}:git-${GIT_SHORT}" \
                         -t "${IMAGE_URI}:latest" \
