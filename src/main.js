@@ -1,4 +1,4 @@
-import { CATEGORIES, BLOCK_CATALOG, createDefaultOptions } from './catalog.js';
+import { CATEGORIES, BLOCK_CATALOG, DENSITY_META, createDefaultOptions } from './catalog.js';
 import { getPresetTiles } from './presets.js';
 import { CityEngine } from './cityEngine.js';
 
@@ -275,6 +275,25 @@ function renderInspector() {
   rotationReadout.textContent = `${currentRotation}°`;
   selectedActions.classList.toggle('hidden', !isEditingPlaced);
 
+  // Live per-block capacity readout (Residents / Jobs) that reacts instantly to Stories & Density
+  const capacityCard = document.createElement('div');
+  capacityCard.className = 'block-capacity-card';
+  const refreshCapacityCard = () => {
+    const s = def.stats(currentOptions || {});
+    if (s.residents === 0 && s.jobs === 0) {
+      capacityCard.classList.add('hidden');
+      return;
+    }
+    capacityCard.classList.remove('hidden');
+    const parts = [];
+    if (s.residents > 0) parts.push(`<div><span class="cap-label">Residents</span><strong class="cap-val">${s.residents.toLocaleString()}</strong></div>`);
+    if (s.jobs > 0) parts.push(`<div><span class="cap-label">Jobs</span><strong class="cap-val">${s.jobs.toLocaleString()}</strong></div>`);
+    if (currentOptions.floors) parts.push(`<div><span class="cap-label">Height</span><strong class="cap-val">${currentOptions.floors} fl</strong></div>`);
+    capacityCard.innerHTML = parts.join('');
+  };
+  refreshCapacityCard();
+  inspectorControls.appendChild(capacityCard);
+
   const onOptionChange = (key, value) => {
     if (targetTile) {
       targetTile.options[key] = value;
@@ -285,6 +304,7 @@ function renderInspector() {
       state.activeOptionsByType[blockType][key] = value;
       syncEngineTool();
     }
+    refreshCapacityCard();
   };
 
   for (const ctrl of def.controls) {
@@ -312,10 +332,51 @@ function renderInspector() {
           state.activeOptionsByType[blockType][ctrl.key] = num;
           syncEngineTool();
         }
+        refreshCapacityCard();
       });
       input.addEventListener('change', () => {
         if (targetTile) commitSnapshot();
       });
+      inspectorControls.appendChild(wrap);
+    } else if (ctrl.kind === 'segmented') {
+      const wrap = document.createElement('div');
+      wrap.className = 'field';
+      const val = currentOptions[ctrl.key] ?? def.defaults[ctrl.key];
+      const header = document.createElement('div');
+      header.className = 'field-header';
+      const label = document.createElement('label');
+      label.textContent = ctrl.label;
+      const tag = document.createElement('span');
+      tag.className = 'mono-tag';
+      const activeOpt = ctrl.options.find((o) => o.value === val) || ctrl.options[0];
+      tag.textContent = DENSITY_META[val]?.label || activeOpt?.label || val;
+      header.appendChild(label);
+      header.appendChild(tag);
+      wrap.appendChild(header);
+
+      const seg = document.createElement('div');
+      seg.className = `segmented full-width cols-${ctrl.options.length}`;
+      const hint = document.createElement('span');
+      hint.className = 'field-hint';
+      hint.textContent = DENSITY_META[val]?.desc || '';
+
+      for (const opt of ctrl.options) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `seg-btn${opt.value === val ? ' active' : ''}`;
+        btn.textContent = opt.label;
+        btn.title = DENSITY_META[opt.value]?.desc || opt.label;
+        btn.addEventListener('click', () => {
+          seg.querySelectorAll('.seg-btn').forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          tag.textContent = DENSITY_META[opt.value]?.label || opt.label;
+          hint.textContent = DENSITY_META[opt.value]?.desc || '';
+          onOptionChange(ctrl.key, opt.value);
+        });
+        seg.appendChild(btn);
+      }
+      wrap.appendChild(seg);
+      if (hint.textContent) wrap.appendChild(hint);
       inspectorControls.appendChild(wrap);
     } else if (ctrl.kind === 'select') {
       const wrap = document.createElement('div');

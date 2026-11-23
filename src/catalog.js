@@ -1,7 +1,31 @@
-// Building Block Catalog, Curated Architectural Palettes, and Stats Calculators
+// Building Block Catalog, Curated Architectural Palettes, Density Models & Stats
 
 export const GRID_SIZE = 24;
 export const TILE_SIZE = 2.0;
+
+export const DENSITY_META = {
+  low: { label: 'Low', factor: 0.65, desc: 'Airy footprint with green setback' },
+  medium: { label: 'Med', factor: 1.0, desc: 'Balanced urban block coverage' },
+  high: { label: 'High', factor: 1.5, desc: 'Full-lot high-density massing' },
+  ultra: { label: 'Ultra', factor: 2.1, desc: 'Twin-core maximum urban density' },
+};
+
+export const DENSITY_OPTIONS_4 = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Med' },
+  { value: 'high', label: 'High' },
+  { value: 'ultra', label: 'Ultra' },
+];
+
+export const DENSITY_OPTIONS_3 = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Med' },
+  { value: 'high', label: 'High' },
+];
+
+export function getDensityFactor(density = 'medium') {
+  return DENSITY_META[density]?.factor ?? 1.0;
+}
 
 export const FACADE_PALETTES = [
   { id: 'limestone', name: 'Warm Limestone', hex: '#dfd7c8' },
@@ -18,6 +42,15 @@ export const GLASS_PALETTES = [
   { id: 'bronze', name: 'Warm Bronze', hex: '#8e7c6a' },
   { id: 'silver', name: 'Silver Mist', hex: '#98a9b8' },
   { id: 'obsidian', name: 'Deep Graphite', hex: '#3e4f63' },
+];
+
+export const HIGHRISE_PALETTES = [
+  { id: 'glacier', name: 'Glacier Glass', hex: '#6d98b5' },
+  { id: 'limestone', name: 'Warm Limestone', hex: '#d8d0c1' },
+  { id: 'silver', name: 'Silver Aluminum', hex: '#99aab8' },
+  { id: 'bronze', name: 'Champagne Bronze', hex: '#9a846c' },
+  { id: 'terracotta', name: 'Urban Terracotta', hex: '#b36b54' },
+  { id: 'charcoal', name: 'Graphite Steel', hex: '#424e5e' },
 ];
 
 export const ROOF_PALETTES = [
@@ -152,17 +185,87 @@ export const BLOCK_CATALOG = {
     stats: () => ({ residents: 0, jobs: 0, greenery: 0.8 }),
   },
 
+  highrise: {
+    type: 'highrise',
+    category: 'residential',
+    name: 'Residential High-Rise',
+    desc: 'Tall residential tower (10–60 fl) & density',
+    swatch: '#466c8c',
+    icon: '▥',
+    paintable: false,
+    rotatable: true,
+    defaults: {
+      floors: 26,
+      density: 'medium', // low | medium | high | ultra
+      massing: 'point', // point | stepped | twin | skybridge
+      style: 'modern', // modern | limestone | brick | midcentury
+      color: '#6d98b5',
+      crown: 'penthouse', // penthouse | garden | fin | spire
+      balconies: true,
+      groundRetail: true,
+    },
+    controls: [
+      { key: 'floors', label: 'Stories', kind: 'range', min: 10, max: 60, step: 1, unit: ' fl' },
+      { key: 'density', label: 'Density', kind: 'segmented', options: DENSITY_OPTIONS_4 },
+      {
+        key: 'massing',
+        label: 'Tower Massing',
+        kind: 'select',
+        options: [
+          { value: 'point', label: 'Slender Point Tower' },
+          { value: 'stepped', label: 'Stepped Skyscraper' },
+          { value: 'twin', label: 'Twin Residential Towers' },
+          { value: 'skybridge', label: 'Twin Towers + Skybridge' },
+        ],
+      },
+      {
+        key: 'style',
+        label: 'Facade Style',
+        kind: 'select',
+        options: [
+          { value: 'modern', label: 'Curtain Glass & Concrete' },
+          { value: 'limestone', label: 'Limestone & Ribbon Glass' },
+          { value: 'brick', label: 'Urban Brick High-Rise' },
+          { value: 'midcentury', label: 'Banded Balcony Tower' },
+        ],
+      },
+      { key: 'color', label: 'Tower Palette', kind: 'swatches', palette: HIGHRISE_PALETTES },
+      {
+        key: 'crown',
+        label: 'Rooftop Crown',
+        kind: 'select',
+        options: [
+          { value: 'penthouse', label: 'Illuminated Sky Penthouse' },
+          { value: 'garden', label: 'Sky Park Terrace' },
+          { value: 'fin', label: 'Architectural Fin Crown' },
+          { value: 'spire', label: 'Observation Spire' },
+        ],
+      },
+      { key: 'balconies', label: 'Sky Balconies', kind: 'toggle' },
+      { key: 'groundRetail', label: 'Podium Lobby & Retail', kind: 'toggle' },
+    ],
+    stats: (o) => {
+      const f = getDensityFactor(o.density);
+      return {
+        residents: Math.round((o.floors || 26) * 18 * f),
+        jobs: o.groundRetail ? Math.round(14 * f) : 3,
+        greenery: (o.crown === 'garden' ? 0.65 : 0) + (o.density === 'low' ? 0.45 : 0),
+      };
+    },
+  },
+
   apartment: {
     type: 'apartment',
     category: 'residential',
     name: 'Apartment Block',
-    desc: 'Customizable floors, roofs & retail',
+    desc: 'Customizable floors (2–24 fl), density & roofs',
     swatch: '#b96b52',
     icon: '▤',
     paintable: false,
     rotatable: true,
     defaults: {
-      floors: 5,
+      floors: 6,
+      density: 'medium', // low | medium | high | ultra
       style: 'brick', // modern | brick | timber | midcentury
       color: '#b96b52',
       roofStyle: 'terrace', // terrace | gable | green | penthouse
@@ -170,7 +273,8 @@ export const BLOCK_CATALOG = {
       groundRetail: true,
     },
     controls: [
-      { key: 'floors', label: 'Stories', kind: 'range', min: 2, max: 12, step: 1, unit: ' fl' },
+      { key: 'floors', label: 'Stories', kind: 'range', min: 2, max: 24, step: 1, unit: ' fl' },
+      { key: 'density', label: 'Density', kind: 'segmented', options: DENSITY_OPTIONS_4 },
       {
         key: 'style',
         label: 'Facade Style',
@@ -197,66 +301,77 @@ export const BLOCK_CATALOG = {
       { key: 'balconies', label: 'Balconies', kind: 'toggle' },
       { key: 'groundRetail', label: 'Ground-Floor Retail', kind: 'toggle' },
     ],
-    stats: (o) => ({
-      residents: Math.round((o.floors || 5) * 14),
-      jobs: o.groundRetail ? 8 : 1,
-      greenery: o.roofStyle === 'green' ? 0.6 : 0,
-    }),
+    stats: (o) => {
+      const f = getDensityFactor(o.density);
+      return {
+        residents: Math.round((o.floors || 6) * 14 * f),
+        jobs: o.groundRetail ? Math.round(8 * f) : 1,
+        greenery: (o.roofStyle === 'green' ? 0.6 : 0) + (o.density === 'low' ? 0.35 : 0),
+      };
+    },
   },
 
   townhouse: {
     type: 'townhouse',
     category: 'residential',
     name: 'Townhouse Row',
-    desc: 'Low-rise rowhomes with pitched roofs',
+    desc: 'Detached home, duplex, or dense rowhomes',
     swatch: '#d4a66a',
     icon: '⌂',
     paintable: false,
     rotatable: true,
     defaults: {
       floors: 2,
+      density: 'medium', // low | medium | high
       color: '#dfd7c8',
       roofColor: '#9c4f3d',
       garden: true,
     },
     controls: [
-      { key: 'floors', label: 'Stories', kind: 'range', min: 1, max: 3, step: 1, unit: ' fl' },
+      { key: 'floors', label: 'Stories', kind: 'range', min: 1, max: 4, step: 1, unit: ' fl' },
+      { key: 'density', label: 'Density', kind: 'segmented', options: DENSITY_OPTIONS_3 },
       { key: 'color', label: 'Facade Color', kind: 'swatches', palette: FACADE_PALETTES },
       { key: 'roofColor', label: 'Roof Color', kind: 'swatches', palette: ROOF_PALETTES },
       { key: 'garden', label: 'Front Yard & Hedges', kind: 'toggle' },
     ],
-    stats: (o) => ({
-      residents: Math.round((o.floors || 2) * 6),
-      jobs: 0,
-      greenery: o.garden ? 0.45 : 0.1,
-    }),
+    stats: (o) => {
+      const units = o.density === 'high' ? 3 : o.density === 'low' ? 1 : 2;
+      return {
+        residents: Math.round((o.floors || 2) * 3.5 * units),
+        jobs: 0,
+        greenery: (o.garden ? 0.45 : 0.1) + (o.density === 'low' ? 0.3 : 0),
+      };
+    },
   },
 
   office: {
     type: 'office',
     category: 'commercial',
-    name: 'Office Tower',
-    desc: 'Mid-to-high-rise commercial tower',
+    name: 'Office High-Rise',
+    desc: 'Mid-rise to supertall office tower (4–60 fl)',
     swatch: '#527987',
     icon: '▯',
     paintable: false,
     rotatable: true,
     defaults: {
-      floors: 9,
-      massing: 'stepped', // curtain | stepped | twin
+      floors: 18,
+      density: 'medium', // low | medium | high | ultra
+      massing: 'stepped', // curtain | stepped | twin | tapered
       color: '#6d98b5',
       crown: 'mechanical', // mechanical | spire | helipad | garden
     },
     controls: [
-      { key: 'floors', label: 'Stories', kind: 'range', min: 4, max: 18, step: 1, unit: ' fl' },
+      { key: 'floors', label: 'Stories', kind: 'range', min: 4, max: 60, step: 1, unit: ' fl' },
+      { key: 'density', label: 'Density', kind: 'segmented', options: DENSITY_OPTIONS_4 },
       {
         key: 'massing',
         label: 'Tower Massing',
         kind: 'select',
         options: [
           { value: 'curtain', label: 'Glass Curtain Wall' },
-          { value: 'stepped', label: 'Stepped Setback Tower' },
+          { value: 'stepped', label: 'Stepped Setback Supertall' },
           { value: 'twin', label: 'Twin Atrium Wings' },
+          { value: 'tapered', label: 'Tapered Diagrid Pinnacle' },
         ],
       },
       { key: 'color', label: 'Glass Tint', kind: 'swatches', palette: GLASS_PALETTES },
@@ -272,39 +387,48 @@ export const BLOCK_CATALOG = {
         ],
       },
     ],
-    stats: (o) => ({
-      residents: 0,
-      jobs: Math.round((o.floors || 9) * 18),
-      greenery: o.crown === 'garden' ? 0.4 : 0,
-    }),
+    stats: (o) => {
+      const f = getDensityFactor(o.density);
+      return {
+        residents: 0,
+        jobs: Math.round((o.floors || 18) * 20 * f),
+        greenery: (o.crown === 'garden' ? 0.45 : 0) + (o.density === 'low' ? 0.35 : 0),
+      };
+    },
   },
 
   shop: {
     type: 'shop',
     category: 'commercial',
     name: 'Corner Café & Shop',
-    desc: 'Boutique storefront with awning & patio',
+    desc: 'Boutique storefront or dense retail block',
     swatch: '#2f6f4e',
     icon: '◫',
     paintable: false,
     rotatable: true,
     defaults: {
       floors: 2,
+      density: 'medium', // low | medium | high
       color: '#dfd7c8',
       awningColor: '#2f6f4e',
       patio: true,
     },
     controls: [
-      { key: 'floors', label: 'Stories', kind: 'range', min: 1, max: 3, step: 1, unit: ' fl' },
+      { key: 'floors', label: 'Stories', kind: 'range', min: 1, max: 4, step: 1, unit: ' fl' },
+      { key: 'density', label: 'Density', kind: 'segmented', options: DENSITY_OPTIONS_3 },
       { key: 'color', label: 'Building Color', kind: 'swatches', palette: FACADE_PALETTES },
       { key: 'awningColor', label: 'Awning Color', kind: 'swatches', palette: AWNING_PALETTES },
       { key: 'patio', label: 'Outdoor Seating', kind: 'toggle' },
     ],
-    stats: (o) => ({
-      residents: (o.floors || 2) > 1 ? 6 : 0,
-      jobs: 14,
-      greenery: o.patio ? 0.2 : 0,
-    }),
+    stats: (o) => {
+      const f = getDensityFactor(o.density);
+      const floors = o.floors || 2;
+      return {
+        residents: floors > 1 ? Math.round((floors - 1) * 6 * f) : 0,
+        jobs: Math.round(14 * f),
+        greenery: (o.patio ? 0.2 : 0) + (o.density === 'low' ? 0.25 : 0),
+      };
+    },
   },
 
   civic: {

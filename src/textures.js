@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 
 // Procedural Canvas Texture Cache — zero network assets, mipmapped, fast GPU reuse.
+// Base HTMLCanvasElements are cached separately from vertical repeat factors so resizing
+// high-rise towers from 10 to 60 stories performs ZERO Canvas2D redraws!
+const canvasCache = new Map();
 const textureCache = new Map();
 const materialCache = new Map();
 
@@ -21,21 +24,31 @@ function hashStr(str) {
   return h >>> 0;
 }
 
-function makeCanvasTexture(key, width, height, drawFn, repeatX = 1, repeatY = 1) {
-  if (textureCache.has(key)) return textureCache.get(key);
+function getOrDrawCanvas(canvasKey, width, height, drawFn) {
+  if (canvasCache.has(canvasKey)) return canvasCache.get(canvasKey);
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
   drawFn(ctx, width, height);
+  canvasCache.set(canvasKey, canvas);
+  return canvas;
+}
+
+function makeCanvasTexture(canvasKey, width, height, drawFn, repeatX = 1, repeatY = 1) {
+  const rx = Math.round(repeatX * 100) / 100;
+  const ry = Math.round(repeatY * 100) / 100;
+  const texKey = `${canvasKey}@${rx}x${ry}`;
+  if (textureCache.has(texKey)) return textureCache.get(texKey);
+  const canvas = getOrDrawCanvas(canvasKey, width, height, drawFn);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(repeatX, repeatY);
+  tex.repeat.set(rx, ry);
   tex.anisotropy = 4;
   tex.needsUpdate = true;
-  textureCache.set(key, tex);
+  textureCache.set(texKey, tex);
   return tex;
 }
 
@@ -52,110 +65,151 @@ function shadeHex(hex, factor) {
 }
 
 // ============================================================================
-// Facade & Window Emissive Textures (Apartments, Offices, Townhouses, Shops)
+// Facade & Window Emissive Textures (Apartments, High-Rises, Offices, Shops)
 // ============================================================================
 export function getFacadeMaterial({ style, color, cols = 4, rows = 4, isNight = false, isGlass = false }) {
-  const key = `facade:${style}:${color}:${cols}x${rows}:${isNight ? 'N' : 'D'}:${isGlass ? 'G' : 'S'}`;
-  if (materialCache.has(key)) return materialCache.get(key);
+  const safeRows = Math.max(1, Math.round(rows));
+  // For towers taller than 10 stories, draw a crisp 12-story modular tile (256x512)
+  // and tile vertically with exact floor proportion!
+  const tileRows = safeRows > 10 ? 12 : safeRows;
+  const repeatY = safeRows > 10 ? safeRows / 12 : 1;
+  const texH = tileRows >= 8 ? 512 : 256;
 
-  const seed = hashStr(`${style}:${color}:${cols}:${rows}`);
+  const baseKey = `facade:${style}:${color}:${cols}x${tileRows}:${isNight ? 'N' : 'D'}:${isGlass ? 'G' : 'S'}`;
+  const matKey = `${baseKey}:r${Math.round(repeatY * 100)}`;
+  if (materialCache.has(matKey)) return materialCache.get(matKey);
 
-  const map = makeCanvasTexture(`${key}:map`, 256, 256, (ctx, w, h) => {
-    const rand = seededRand(seed);
-    ctx.fillStyle = color;
-    ctx.fillRect(0, 0, w, h);
+  const seed = hashStr(baseKey);
 
-    // Subtle architectural surface texture
-    if (style === 'brick') {
-      ctx.fillStyle = shadeHex(color, 0.88);
-      for (let y = 0; y < h; y += 8) {
-        ctx.fillRect(0, y, w, 1);
-        const offset = (y / 8) % 2 === 0 ? 0 : 12;
-        for (let x = offset; x < w; x += 24) {
-          ctx.fillRect(x, y, 1, 8);
-        }
-      }
-    } else if (style === 'timber') {
-      for (let x = 0; x < w; x += 8) {
-        ctx.fillStyle = x % 16 === 0 ? shadeHex(color, 0.92) : shadeHex(color, 1.04);
-        ctx.fillRect(x, 0, 2, h);
-      }
-    } else if (style === 'midcentury') {
-      ctx.fillStyle = shadeHex(color, 1.12);
-      const rowH = h / rows;
-      for (let r = 0; r < rows; r++) {
-        ctx.fillRect(0, r * rowH, w, Math.max(3, rowH * 0.14));
-      }
-    } else {
-      // Concrete/glass panel grid
-      ctx.fillStyle = shadeHex(color, 0.9);
-      const rowH = h / rows;
-      for (let r = 0; r < rows; r++) {
-        ctx.fillRect(0, r * rowH, w, 2);
-      }
-    }
-
-    // Windows
-    const cellW = w / cols;
-    const cellH = h / rows;
-    const padX = isGlass ? cellW * 0.1 : cellW * 0.2;
-    const padY = isGlass ? cellH * 0.14 : cellH * 0.22;
-
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const wx = c * cellW + padX;
-        const wy = r * cellH + padY;
-        const ww = cellW - padX * 2;
-        const wh = cellH - padY * 2;
-
-        // Window recess frame
-        ctx.fillStyle = shadeHex(color, 0.65);
-        ctx.fillRect(wx - 2, wy - 2, ww + 4, wh + 4);
-
-        const lit = isNight && rand() > 0.36;
-        if (lit) {
-          ctx.fillStyle = rand() > 0.25 ? '#ffe39f' : '#d6eeff';
-        } else if (isGlass) {
-          const sky = 0.88 + rand() * 0.22;
-          ctx.fillStyle = shadeHex(color, isNight ? 0.42 : sky * 0.72);
-        } else {
-          ctx.fillStyle = isNight ? '#243245' : '#4a657d';
-        }
-        ctx.fillRect(wx, wy, ww, wh);
-
-        // Diagonal subtle reflection band in daylight
-        if (!isNight) {
-          ctx.fillStyle = 'rgba(255,255,255,0.22)';
-          ctx.fillRect(wx + 2, wy + 2, ww * 0.35, wh - 4);
-        }
-        // Center mullion
-        ctx.fillStyle = shadeHex(color, 0.6);
-        ctx.fillRect(wx + ww * 0.5 - 1, wy, 2, wh);
-      }
-    }
-  });
-
-  let emissiveMap = null;
-  if (isNight) {
-    emissiveMap = makeCanvasTexture(`${key}:emissive`, 256, 256, (ctx, w, h) => {
+  const map = makeCanvasTexture(
+    `${baseKey}:map`,
+    256,
+    texH,
+    (ctx, w, h) => {
       const rand = seededRand(seed);
-      ctx.fillStyle = '#000000';
+      ctx.fillStyle = color;
       ctx.fillRect(0, 0, w, h);
-      const cellW = w / cols;
-      const cellH = h / rows;
-      const padX = isGlass ? cellW * 0.1 : cellW * 0.2;
-      const padY = isGlass ? cellH * 0.14 : cellH * 0.22;
 
-      for (let r = 0; r < rows; r++) {
+      // Subtle architectural surface texture
+      if (style === 'brick') {
+        ctx.fillStyle = shadeHex(color, 0.88);
+        for (let y = 0; y < h; y += 8) {
+          ctx.fillRect(0, y, w, 1);
+          const offset = (y / 8) % 2 === 0 ? 0 : 12;
+          for (let x = offset; x < w; x += 24) {
+            ctx.fillRect(x, y, 1, 8);
+          }
+        }
+      } else if (style === 'timber') {
+        for (let x = 0; x < w; x += 8) {
+          ctx.fillStyle = x % 16 === 0 ? shadeHex(color, 0.92) : shadeHex(color, 1.04);
+          ctx.fillRect(x, 0, 2, h);
+        }
+      } else if (style === 'limestone') {
+        // Refined vertical pilasters and subtle horizontal floor spandrels
+        const cellW = w / cols;
+        const rowH = h / tileRows;
+        ctx.fillStyle = shadeHex(color, 1.07);
+        for (let c = 0; c <= cols; c++) {
+          ctx.fillRect(c * cellW - 2, 0, 4, h);
+        }
+        ctx.fillStyle = shadeHex(color, 0.9);
+        for (let r = 0; r < tileRows; r++) {
+          ctx.fillRect(0, r * rowH, w, Math.max(3, rowH * 0.16));
+        }
+      } else if (style === 'midcentury') {
+        ctx.fillStyle = shadeHex(color, 1.12);
+        const rowH = h / tileRows;
+        for (let r = 0; r < tileRows; r++) {
+          ctx.fillRect(0, r * rowH, w, Math.max(3, rowH * 0.16));
+        }
+      } else {
+        // Modern curtain wall / concrete panel grid
+        ctx.fillStyle = shadeHex(color, 0.86);
+        const rowH = h / tileRows;
+        for (let r = 0; r < tileRows; r++) {
+          ctx.fillRect(0, r * rowH, w, Math.max(2, rowH * 0.1));
+        }
+      }
+
+      // Windows
+      const cellW = w / cols;
+      const cellH = h / tileRows;
+      const padX = isGlass ? cellW * 0.09 : style === 'limestone' ? cellW * 0.15 : cellW * 0.19;
+      const padY = isGlass ? cellH * 0.14 : cellH * 0.21;
+
+      for (let r = 0; r < tileRows; r++) {
         for (let c = 0; c < cols; c++) {
-          const lit = rand() > 0.36;
+          const wx = c * cellW + padX;
+          const wy = r * cellH + padY;
+          const ww = Math.max(4, cellW - padX * 2);
+          const wh = Math.max(4, cellH - padY * 2);
+
+          // Window recess frame
+          ctx.fillStyle = shadeHex(color, 0.64);
+          ctx.fillRect(wx - 2, wy - 2, ww + 4, wh + 4);
+
+          const lit = isNight && rand() > 0.38;
           if (lit) {
-            ctx.fillStyle = rand() > 0.25 ? '#ffcf70' : '#a8d8ff';
-            ctx.fillRect(c * cellW + padX, r * cellH + padY, cellW - padX * 2, cellH - padY * 2);
+            ctx.fillStyle = rand() > 0.24 ? '#ffe39f' : '#d6eeff';
+          } else if (isGlass) {
+            const sky = 0.88 + rand() * 0.22;
+            ctx.fillStyle = shadeHex(color, isNight ? 0.4 : sky * 0.72);
+          } else {
+            ctx.fillStyle = isNight ? '#243245' : '#4a657d';
+          }
+          ctx.fillRect(wx, wy, ww, wh);
+
+          // Subtle daylight reflection band
+          if (!isNight) {
+            ctx.fillStyle = 'rgba(255,255,255,0.22)';
+            ctx.fillRect(wx + 2, wy + 2, ww * 0.35, Math.max(1, wh - 4));
+          }
+          // Center mullion
+          if (ww >= 10) {
+            ctx.fillStyle = shadeHex(color, 0.6);
+            ctx.fillRect(wx + ww * 0.5 - 1, wy, 2, wh);
           }
         }
       }
-    });
+    },
+    1,
+    repeatY
+  );
+
+  let emissiveMap = null;
+  if (isNight) {
+    emissiveMap = makeCanvasTexture(
+      `${baseKey}:emissive`,
+      256,
+      texH,
+      (ctx, w, h) => {
+        const rand = seededRand(seed);
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, w, h);
+        const cellW = w / cols;
+        const cellH = h / tileRows;
+        const padX = isGlass ? cellW * 0.09 : style === 'limestone' ? cellW * 0.15 : cellW * 0.19;
+        const padY = isGlass ? cellH * 0.14 : cellH * 0.21;
+
+        for (let r = 0; r < tileRows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const lit = rand() > 0.38;
+            if (lit) {
+              ctx.fillStyle = rand() > 0.24 ? '#ffcf70' : '#a8d8ff';
+              ctx.fillRect(
+                c * cellW + padX,
+                r * cellH + padY,
+                Math.max(4, cellW - padX * 2),
+                Math.max(4, cellH - padY * 2)
+              );
+            }
+          }
+        }
+      },
+      1,
+      repeatY
+    );
   }
 
   const mat = new THREE.MeshStandardMaterial({
@@ -167,7 +221,7 @@ export function getFacadeMaterial({ style, color, cols = 4, rows = 4, isNight = 
     metalness: isGlass ? 0.35 : 0.04,
   });
 
-  materialCache.set(key, mat);
+  materialCache.set(matKey, mat);
   return mat;
 }
 

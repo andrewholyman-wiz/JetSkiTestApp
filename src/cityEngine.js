@@ -15,7 +15,7 @@ const TIME_PRESETS = {
     fog: 0xd4e4f2,
     sunColor: 0xfff0d4,
     sunInt: 1.65,
-    sunPos: [28, 22, 16],
+    sunPos: [38, 34, 22],
     hemiSky: 0xd8ecff,
     hemiGround: 0x7c8c6e,
     hemiInt: 0.9,
@@ -26,7 +26,7 @@ const TIME_PRESETS = {
     fog: 0xd0e1f0,
     sunColor: 0xfffaf0,
     sunInt: 1.85,
-    sunPos: [22, 36, 18],
+    sunPos: [28, 48, 24],
     hemiSky: 0xe6f2ff,
     hemiGround: 0x7d926f,
     hemiInt: 0.95,
@@ -37,7 +37,7 @@ const TIME_PRESETS = {
     fog: 0xe7bfa2,
     sunColor: 0xffae66,
     sunInt: 1.75,
-    sunPos: [-32, 13, 22],
+    sunPos: [-42, 22, 28],
     hemiSky: 0xffd5b0,
     hemiGround: 0x625a5c,
     hemiInt: 0.78,
@@ -48,7 +48,7 @@ const TIME_PRESETS = {
     fog: 0x141f33,
     sunColor: 0x7da4db,
     sunInt: 0.65,
-    sunPos: [-18, 28, -16],
+    sunPos: [-26, 42, -22],
     hemiSky: 0x304870,
     hemiGround: 0x19202d,
     hemiInt: 0.55,
@@ -110,10 +110,10 @@ export class CityEngine {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(TIME_PRESETS.midday.sky);
-    this.scene.fog = new THREE.Fog(TIME_PRESETS.midday.fog, 55, 135);
+    this.scene.fog = new THREE.Fog(TIME_PRESETS.midday.fog, 75, 210);
 
-    this.camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.4, 240);
-    this.camera.position.set(27, 25, 29);
+    this.camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.4, 340);
+    this.camera.position.set(29, 27, 31);
 
     this.controls = new OrbitControls(this.camera, this.canvas);
     this.controls.enableDamping = true;
@@ -121,8 +121,8 @@ export class CityEngine {
     this.controls.maxPolarAngle = Math.PI * 0.465;
     this.controls.minPolarAngle = 0.14;
     this.controls.minDistance = 8;
-    this.controls.maxDistance = 82;
-    this.controls.target.set(0, 0, 2);
+    this.controls.maxDistance = 120;
+    this.controls.target.set(0, 1.5, 2);
     this.controls.mouseButtons = {
       LEFT: null,
       MIDDLE: THREE.MOUSE.PAN,
@@ -134,15 +134,15 @@ export class CityEngine {
     this.scene.add(this.hemiLight);
 
     this.sunLight = new THREE.DirectionalLight(0xfffaf0, 1.85);
-    this.sunLight.position.set(22, 36, 18);
+    this.sunLight.position.set(28, 48, 24);
     this.sunLight.castShadow = true;
-    const d = HALF_WORLD + 6;
+    const d = HALF_WORLD + 18;
     this.sunLight.shadow.camera.left = -d;
     this.sunLight.shadow.camera.right = d;
     this.sunLight.shadow.camera.top = d;
     this.sunLight.shadow.camera.bottom = -d;
     this.sunLight.shadow.camera.near = 4;
-    this.sunLight.shadow.camera.far = 110;
+    this.sunLight.shadow.camera.far = 160;
     this.sunLight.shadow.bias = -0.0008;
     this.scene.add(this.sunLight);
 
@@ -632,11 +632,11 @@ export class CityEngine {
 
   flyToPreset(preset) {
     if (preset === 'iso') {
-      this.cameraGoal = { pos: new THREE.Vector3(27, 25, 29), target: new THREE.Vector3(0, 0, 2) };
+      this.cameraGoal = { pos: new THREE.Vector3(30, 28, 32), target: new THREE.Vector3(0, 1.5, 2) };
     } else if (preset === 'street') {
-      this.cameraGoal = { pos: new THREE.Vector3(-14, 5.2, 18), target: new THREE.Vector3(4, 1.8, -2) };
+      this.cameraGoal = { pos: new THREE.Vector3(-16, 6.2, 22), target: new THREE.Vector3(3, 4.4, -2) };
     } else if (preset === 'top') {
-      this.cameraGoal = { pos: new THREE.Vector3(0, 52, 0.01), target: new THREE.Vector3(0, 0, 0) };
+      this.cameraGoal = { pos: new THREE.Vector3(0, 68, 0.01), target: new THREE.Vector3(0, 0, 0) };
     }
   }
 

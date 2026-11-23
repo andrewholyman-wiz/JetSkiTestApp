@@ -393,22 +393,32 @@ function buildWater(opts, neighbors, isNight) {
 }
 
 // ============================================================================
-// 4. APARTMENT BLOCK (Deeply Customizable)
+// 4. APARTMENT BLOCK (2–24 Stories, Customizable Density, Style, Roof & Retail)
 // ============================================================================
 function buildApartment(opts, isNight) {
   const g = new THREE.Group();
   const s = TILE_SIZE;
-  const floors = Math.max(2, Math.min(12, Number(opts.floors) || 5));
+  const floors = Math.max(2, Math.min(24, Number(opts.floors) || 6));
+  const density = opts.density || 'medium';
   const style = opts.style || 'brick';
   const color = opts.color || '#b96b52';
   const roofStyle = opts.roofStyle || 'terrace';
 
-  // Sidewalk lot pad
-  g.add(makeBox(s, 0.08, s, getStandardMaterial('#c7c2b8', 0.9, 0.0), 0, 0.04, 0, false, true));
+  // Lot base (low density includes green setback yard & trees)
+  if (density === 'low') {
+    g.add(makeBox(s, 0.06, s, getStandardMaterial('#7ea463', 0.93, 0.0), 0, 0.03, 0, false, true));
+    g.add(makeBox(1.36, 0.08, 1.32, getStandardMaterial('#c7c2b8', 0.9, 0.0), 0, 0.04, 0, false, true));
+    makeTree(g, -0.74, 0.72, 0.56, 'spring');
+    makeTree(g, 0.74, -0.72, 0.52, 'spring');
+  } else {
+    g.add(makeBox(s, 0.08, s, getStandardMaterial('#c7c2b8', 0.9, 0.0), 0, 0.04, 0, false, true));
+  }
 
-  const bodyW = 1.54;
-  const bodyD = 1.42;
-  const floorH = 0.34;
+  const floorH = 0.32;
+  const isUltra = density === 'ultra';
+  const bodyW = density === 'low' ? 1.16 : density === 'high' ? 1.78 : isUltra ? 1.86 : 1.54;
+  const bodyD = density === 'low' ? 1.08 : density === 'high' ? 1.7 : isUltra ? 1.76 : 1.42;
+  const winCols = density === 'low' ? 3 : density === 'high' ? 5 : isUltra ? 4 : 4;
 
   // Optional Ground-Floor Retail Podium
   let baseY = 0.08;
@@ -421,51 +431,65 @@ function buildApartment(opts, isNight) {
       : getStandardMaterial('#3d5a73', 0.22, 0.3);
     const awningMat = getStandardMaterial('#2f6f4e', 0.78, 0.02);
 
-    g.add(makeBox(bodyW + 0.06, retailH, bodyD + 0.06, stoneMat, 0, baseY + retailH * 0.5, 0));
-    g.add(makeBox(bodyW - 0.18, retailH * 0.62, bodyD + 0.08, shopWindowMat, 0, baseY + retailH * 0.44, 0, false, false));
-    // Front awning
-    const awning = makeBox(bodyW + 0.04, 0.06, 0.24, awningMat, 0, baseY + retailH - 0.04, bodyD * 0.5 + 0.11);
+    g.add(makeBox(bodyW + 0.05, retailH, bodyD + 0.05, stoneMat, 0, baseY + retailH * 0.5, 0));
+    g.add(makeBox(bodyW - 0.16, retailH * 0.62, bodyD + 0.07, shopWindowMat, 0, baseY + retailH * 0.44, 0, false, false));
+    const awning = makeBox(bodyW + 0.03, 0.06, 0.22, awningMat, 0, baseY + retailH - 0.04, bodyD * 0.5 + 0.1);
     awning.rotation.x = 0.26;
     g.add(awning);
     baseY += retailH;
   }
 
-  // Main Residential Tower Body with Procedural Facade Texture
   const upperH = upperFloors * floorH;
   const facadeMat = getFacadeMaterial({
     style,
     color,
-    cols: 4,
-    rows: Math.min(8, Math.max(2, upperFloors)),
+    cols: winCols,
+    rows: upperFloors,
     isNight,
     isGlass: style === 'modern',
   });
   const solidWall = getStandardMaterial(color, 0.82, 0.04);
   const roofMat = getStandardMaterial('#787e87', 0.85, 0.05);
-
-  const materials = [facadeMat, facadeMat, roofMat, solidWall, facadeMat, facadeMat];
-  const tower = new THREE.Mesh(UNIT_BOX, materials);
-  tower.scale.set(bodyW, upperH, bodyD);
-  tower.position.set(0, baseY + upperH * 0.5, 0);
-  tower.castShadow = true;
-  tower.receiveShadow = true;
-  g.add(tower);
-
-  // Subtle cornice trim
   const trimMat = getStandardMaterial('#e5e0d5', 0.78, 0.04);
+  const materials = [facadeMat, facadeMat, roofMat, solidWall, facadeMat, facadeMat];
   const topY = baseY + upperH;
-  g.add(makeBox(bodyW + 0.06, 0.06, bodyD + 0.06, trimMat, 0, topY + 0.02, 0));
 
-  // Optional 3D Balconies on front & back faces
+  if (isUltra) {
+    // Ultra-density twin parallel residential slabs with narrow sunlit courtyard slot
+    const slabW = 0.84;
+    for (const sx of [-0.49, 0.49]) {
+      const slab = new THREE.Mesh(UNIT_BOX, materials);
+      slab.scale.set(slabW, upperH, bodyD);
+      slab.position.set(sx, baseY + upperH * 0.5, 0);
+      slab.castShadow = true;
+      slab.receiveShadow = true;
+      g.add(slab);
+      g.add(makeBox(slabW + 0.05, 0.06, bodyD + 0.05, trimMat, sx, topY + 0.02, 0));
+    }
+    // Central elevator core bridge linking the twin slabs
+    g.add(makeBox(0.24, upperH * 0.92, 0.54, trimMat, 0, baseY + upperH * 0.46, 0));
+  } else {
+    const tower = new THREE.Mesh(UNIT_BOX, materials);
+    tower.scale.set(bodyW, upperH, bodyD);
+    tower.position.set(0, baseY + upperH * 0.5, 0);
+    tower.castShadow = true;
+    tower.receiveShadow = true;
+    g.add(tower);
+    g.add(makeBox(bodyW + 0.06, 0.06, bodyD + 0.06, trimMat, 0, topY + 0.02, 0));
+  }
+
+  // Optional 3D Balconies (stepped cleanly on tall apartments for low draw calls)
   if (opts.balconies) {
     const slabMat = getStandardMaterial('#d8d3c8', 0.8, 0.04);
     const railMat = getStandardMaterial('#3f4854', 0.4, 0.5);
-    const step = upperFloors > 6 ? 2 : 1;
+    const step = Math.max(1, Math.ceil(upperFloors / 7));
+    const bxOffsets = density === 'low' ? [0] : isUltra ? [-0.49, 0.49] : [-bodyW * 0.26, bodyW * 0.26];
+    const balW = density === 'low' ? 0.56 : isUltra ? 0.54 : 0.44;
     for (let fl = 0; fl < upperFloors; fl += step) {
       const by = baseY + (fl + 0.18) * floorH;
-      for (const bx of [-0.4, 0.4]) {
-        g.add(makeBox(0.46, 0.04, 0.2, slabMat, bx, by, bodyD * 0.5 + 0.09, true, true));
-        g.add(makeBox(0.46, 0.11, 0.025, railMat, bx, by + 0.075, bodyD * 0.5 + 0.18, false, false));
+      for (const bx of bxOffsets) {
+        g.add(makeBox(balW, 0.04, 0.18, slabMat, bx, by, bodyD * 0.5 + 0.08, true, true));
+        g.add(makeBox(balW, 0.1, 0.025, railMat, bx, by + 0.07, bodyD * 0.5 + 0.16, false, false));
       }
     }
   }
@@ -473,39 +497,276 @@ function buildApartment(opts, isNight) {
   // Customizable Roof Styles
   if (roofStyle === 'terrace') {
     const hvacMat = getStandardMaterial('#9aa2ab', 0.65, 0.25);
-    g.add(makeBox(0.42, 0.18, 0.34, hvacMat, -0.32, topY + 0.13, -0.18));
-    g.add(makeBox(0.24, 0.24, 0.24, trimMat, 0.36, topY + 0.16, 0.2));
+    g.add(makeBox(0.42, 0.18, 0.34, hvacMat, -0.34, topY + 0.13, -0.18));
+    g.add(makeBox(0.24, 0.24, 0.24, trimMat, 0.38, topY + 0.16, 0.2));
   } else if (roofStyle === 'green') {
     const turfMat = getStandardMaterial('#5c9652', 0.9, 0.0);
-    g.add(makeBox(bodyW - 0.16, 0.06, bodyD - 0.16, turfMat, 0, topY + 0.07, 0, false, true));
-    makeTree(g, -0.4, -0.25, 0.48, 'spring');
-    makeTree(g, 0.38, 0.22, 0.42, 'spring');
-    g.add(makeBox(0.24, 0.06, 0.44, trimMat, 0, topY + 0.08, 0.15));
+    if (isUltra) {
+      for (const sx of [-0.49, 0.49]) {
+        g.add(makeBox(0.7, 0.06, bodyD - 0.2, turfMat, sx, topY + 0.07, 0, false, true));
+        makeTree(g, sx, -0.22, 0.42, 'spring');
+      }
+    } else {
+      g.add(makeBox(bodyW - 0.16, 0.06, bodyD - 0.16, turfMat, 0, topY + 0.07, 0, false, true));
+      makeTree(g, -bodyW * 0.24, -0.22, 0.46, 'spring');
+      makeTree(g, bodyW * 0.24, 0.2, 0.42, 'spring');
+      g.add(makeBox(0.24, 0.06, 0.44, trimMat, 0, topY + 0.08, 0.15));
+    }
   } else if (roofStyle === 'penthouse') {
     const phGlass = getFacadeMaterial({ style: 'modern', color: '#6b8da6', cols: 3, rows: 1, isNight, isGlass: true });
-    g.add(makeBox(bodyW * 0.64, 0.36, bodyD * 0.62, phGlass, 0, topY + 0.22, -0.06));
-    g.add(makeBox(bodyW * 0.72, 0.05, bodyD * 0.7, trimMat, 0, topY + 0.42, -0.06));
+    if (isUltra) {
+      for (const sx of [-0.49, 0.49]) {
+        g.add(makeBox(0.58, 0.34, bodyD * 0.62, phGlass, sx, topY + 0.21, -0.05));
+        g.add(makeBox(0.66, 0.05, bodyD * 0.68, trimMat, sx, topY + 0.4, -0.05));
+      }
+    } else {
+      g.add(makeBox(bodyW * 0.64, 0.36, bodyD * 0.62, phGlass, 0, topY + 0.22, -0.06));
+      g.add(makeBox(bodyW * 0.72, 0.05, bodyD * 0.7, trimMat, 0, topY + 0.42, -0.06));
+    }
   } else if (roofStyle === 'gable') {
     const gableMat = getStandardMaterial('#545e6b', 0.82, 0.06);
-    const roofPeak = new THREE.Mesh(new THREE.ConeGeometry(1.06, 0.56, 4), gableMat);
-    roofPeak.rotation.y = Math.PI * 0.25;
-    roofPeak.position.set(0, topY + 0.32, 0);
-    roofPeak.scale.set(1.04, 1, 0.96);
-    roofPeak.castShadow = true;
-    roofPeak.receiveShadow = true;
-    g.add(roofPeak);
+    if (isUltra) {
+      for (const sx of [-0.49, 0.49]) {
+        const peak = new THREE.Mesh(new THREE.ConeGeometry(0.64, 0.48, 4), gableMat);
+        peak.rotation.y = Math.PI * 0.25;
+        peak.position.set(sx, topY + 0.28, 0);
+        peak.scale.set(0.95, 1, 1.9);
+        peak.castShadow = true;
+        g.add(peak);
+      }
+    } else {
+      const roofPeak = new THREE.Mesh(new THREE.ConeGeometry(bodyW * 0.69, 0.54, 4), gableMat);
+      roofPeak.rotation.y = Math.PI * 0.25;
+      roofPeak.position.set(0, topY + 0.31, 0);
+      roofPeak.scale.set(1.04, 1, bodyD / bodyW);
+      roofPeak.castShadow = true;
+      roofPeak.receiveShadow = true;
+      g.add(roofPeak);
+    }
   }
 
   return g;
 }
 
 // ============================================================================
-// 5. TOWNHOUSE ROW
+// 4b. RESIDENTIAL HIGH-RISE (10–60 Stories, Density & Skyscraper Massing)
+// ============================================================================
+function buildResidentialHighRise(opts, isNight) {
+  const g = new THREE.Group();
+  const s = TILE_SIZE;
+  const floors = Math.max(10, Math.min(60, Number(opts.floors) || 26));
+  const density = opts.density || 'medium';
+  const massing = opts.massing || 'point';
+  const style = opts.style || 'modern';
+  const color = opts.color || '#6d98b5';
+  const crown = opts.crown || 'penthouse';
+
+  const isGlass = style === 'modern';
+  const floorH = 0.285;
+
+  // Lot base — low density sits in a landscaped residential pocket park
+  if (density === 'low') {
+    g.add(makeBox(s, 0.07, s, getStandardMaterial('#76a15c', 0.92, 0.0), 0, 0.035, 0, false, true));
+    g.add(makeBox(1.38, 0.09, 1.38, getPlazaStoneMaterial(), 0, 0.045, 0, false, true));
+    makeTree(g, -0.76, -0.74, 0.56, 'spring');
+    makeTree(g, 0.76, 0.74, 0.52, 'spring');
+  } else {
+    g.add(makeBox(s, 0.09, s, getPlazaStoneMaterial(), 0, 0.045, 0, false, true));
+  }
+
+  const trimMat = getStandardMaterial('#dfe3e8', 0.65, 0.18);
+  const frameMat = getStandardMaterial('#3d4652', 0.45, 0.4);
+  const roofMat = getStandardMaterial('#646d7a', 0.78, 0.14);
+  const podiumW = density === 'low' ? 1.24 : density === 'high' ? 1.8 : density === 'ultra' ? 1.9 : 1.6;
+  const podiumD = density === 'low' ? 1.22 : density === 'high' ? 1.76 : density === 'ultra' ? 1.88 : 1.56;
+
+  let baseY = 0.09;
+  const towerFloors = opts.groundRetail ? Math.max(8, floors - 2) : floors;
+  if (opts.groundRetail) {
+    const podiumH = 0.54;
+    const stoneMat = getStandardMaterial('#4c5561', 0.7, 0.12);
+    const lobbyGlass = isNight
+      ? getStandardMaterial('#ffebb3', 0.2, 0.1, '#ffd478', 1.5)
+      : getStandardMaterial('#486882', 0.22, 0.35);
+    g.add(makeBox(podiumW, podiumH, podiumD, stoneMat, 0, baseY + podiumH * 0.5, 0));
+    g.add(makeBox(podiumW - 0.18, podiumH * 0.62, podiumD + 0.03, lobbyGlass, 0, baseY + podiumH * 0.46, 0, false, false));
+    g.add(makeBox(podiumW + 0.04, 0.06, podiumD + 0.04, trimMat, 0, baseY + podiumH + 0.02, 0));
+    baseY += podiumH + 0.02;
+  }
+
+  const towerH = towerFloors * floorH;
+  const cols = density === 'low' ? 4 : density === 'high' ? 6 : density === 'ultra' ? 7 : 5;
+  const makeMat = (rowsCount, colOverride) =>
+    getFacadeMaterial({
+      style,
+      color,
+      cols: colOverride || cols,
+      rows: Math.max(2, Math.round(rowsCount)),
+      isNight,
+      isGlass,
+    });
+
+  const addTowerBlock = (w, h, d, rowsCount, x, yBot, z, colOverride) => {
+    const fMat = makeMat(rowsCount, colOverride);
+    const mats = [fMat, fMat, roofMat, frameMat, fMat, fMat];
+    const m = new THREE.Mesh(UNIT_BOX, mats);
+    m.scale.set(w, h, d);
+    m.position.set(x, yBot + h * 0.5, z);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    g.add(m);
+  };
+
+  const wScale = density === 'low' ? 0.78 : density === 'high' ? 1.18 : density === 'ultra' ? 1.26 : 1.0;
+  let topY = baseY + towerH;
+  let crownW = 1.16 * wScale;
+  let crownD = 1.12 * wScale;
+  let crownX = 0;
+  let crownZ = 0;
+  let steppedWidths = null;
+  let twinInfo = null;
+
+  if (massing === 'stepped') {
+    // 3-tier residential setback skyscraper
+    const f1 = Math.round(towerFloors * 0.46);
+    const f2 = Math.round(towerFloors * 0.32);
+    const f3 = Math.max(2, towerFloors - f1 - f2);
+    const h1 = f1 * floorH;
+    const h2 = f2 * floorH;
+    const h3 = f3 * floorH;
+    const w1 = Math.min(1.82, 1.38 * wScale);
+    const w2 = w1 * 0.78;
+    const w3 = w1 * 0.58;
+    steppedWidths = { w1, w2, w3 };
+
+    addTowerBlock(w1, h1, w1 * 0.96, f1, 0, baseY, 0, cols);
+    g.add(makeBox(w1 + 0.05, 0.06, w1 * 0.96 + 0.05, trimMat, 0, baseY + h1, 0));
+    addTowerBlock(w2, h2, w2 * 0.96, f2, 0, baseY + h1, 0, Math.max(3, cols - 1));
+    g.add(makeBox(w2 + 0.05, 0.06, w2 * 0.96 + 0.05, trimMat, 0, baseY + h1 + h2, 0));
+    addTowerBlock(w3, h3, w3 * 0.96, f3, 0, baseY + h1 + h2, 0, Math.max(3, cols - 2));
+
+    topY = baseY + h1 + h2 + h3;
+    crownW = w3;
+    crownD = w3 * 0.96;
+  } else if (massing === 'twin' || massing === 'skybridge') {
+    const wingW = Math.min(0.84, 0.62 * wScale);
+    const wingD = Math.min(1.66, 1.24 * wScale);
+    const sep = Math.max(0.42, wingW * 0.5 + 0.14);
+    const hA = towerH;
+    const fB = massing === 'skybridge' ? towerFloors : Math.max(6, Math.round(towerFloors * 0.84));
+    const hB = fB * floorH;
+    twinInfo = { wingW, wingD, sep, hB };
+
+    addTowerBlock(wingW, hA, wingD, towerFloors, -sep, baseY, 0, Math.max(3, cols - 2));
+    addTowerBlock(wingW, hB, wingD, fB, sep, baseY, 0, Math.max(3, cols - 2));
+    g.add(makeBox(wingW + 0.04, 0.05, wingD + 0.04, trimMat, sep, baseY + hB + 0.02, 0));
+
+    if (massing === 'skybridge') {
+      const bridgeY = baseY + towerH * 0.64;
+      const bridgeGlass = isNight
+        ? getStandardMaterial('#ffebb3', 0.2, 0.1, '#ffd478', 1.45)
+        : getStandardMaterial('#6f9ab8', 0.2, 0.35);
+      const bridgeSpan = sep * 2 - wingW + 0.08;
+      g.add(makeBox(bridgeSpan, 0.44, wingD * 0.56, bridgeGlass, 0, bridgeY, 0));
+      g.add(makeBox(bridgeSpan + 0.06, 0.06, wingD * 0.62, trimMat, 0, bridgeY + 0.24, 0));
+      g.add(makeBox(bridgeSpan + 0.06, 0.06, wingD * 0.62, trimMat, 0, bridgeY - 0.24, 0));
+    }
+    crownX = -sep;
+    crownW = wingW;
+    crownD = wingD;
+    topY = baseY + hA;
+  } else {
+    // Point tower (ultra density adds a staggered companion tower!)
+    if (density === 'ultra') {
+      const mainW = 1.06;
+      const mainD = 1.18;
+      const sideW = 0.72;
+      const sideD = 1.04;
+      const sideF = Math.max(8, Math.round(towerFloors * 0.76));
+      const sideH = sideF * floorH;
+      addTowerBlock(mainW, towerH, mainD, towerFloors, -0.34, baseY, -0.14, 5);
+      addTowerBlock(sideW, sideH, sideD, sideF, 0.52, baseY, 0.26, 4);
+      g.add(makeBox(sideW + 0.05, 0.05, sideD + 0.05, trimMat, 0.52, baseY + sideH + 0.02, 0.26));
+      crownX = -0.34;
+      crownZ = -0.14;
+      crownW = mainW;
+      crownD = mainD;
+    } else {
+      const w = Math.min(1.66, 1.24 * wScale);
+      const d = Math.min(1.56, 1.16 * wScale);
+      addTowerBlock(w, towerH, d, towerFloors, 0, baseY, 0, cols);
+      // Mid-height architectural mechanical band on supertalls (>= 34 floors)
+      if (towerFloors >= 34) {
+        g.add(makeBox(w + 0.04, 0.2, d + 0.04, frameMat, 0, baseY + towerH * 0.52, 0));
+      }
+      crownW = w;
+      crownD = d;
+    }
+    topY = baseY + towerH;
+  }
+
+  // Sky-loggia horizontal balcony bands (capped at 7 bands for silky 60 FPS even at 60 floors!)
+  if (opts.balconies) {
+    const slabMat = getStandardMaterial('#dfe3e8', 0.72, 0.12);
+    const bandCount = Math.min(7, Math.max(3, Math.floor(towerFloors / 5)));
+    for (let i = 1; i <= bandCount; i++) {
+      const frac = i / (bandCount + 1);
+      const by = baseY + towerH * frac;
+      if (steppedWidths) {
+        const tierW = frac < 0.45 ? steppedWidths.w1 : frac < 0.77 ? steppedWidths.w2 : steppedWidths.w3;
+        g.add(makeBox(tierW + 0.12, 0.045, tierW * 0.96 + 0.12, slabMat, 0, by, 0, false, true));
+      } else if (twinInfo) {
+        g.add(makeBox(twinInfo.wingW + 0.1, 0.045, twinInfo.wingD + 0.1, slabMat, -twinInfo.sep, by, 0, false, true));
+        if (by < baseY + twinInfo.hB - 0.12) {
+          g.add(makeBox(twinInfo.wingW + 0.1, 0.045, twinInfo.wingD + 0.1, slabMat, twinInfo.sep, by, 0, false, true));
+        }
+      } else {
+        g.add(makeBox(crownW + 0.12, 0.045, crownD + 0.12, slabMat, crownX, by, crownZ, false, true));
+      }
+    }
+  }
+
+  // Rooftop Parapet & Crown
+  g.add(makeBox(crownW + 0.06, 0.07, crownD + 0.06, trimMat, crownX, topY + 0.03, crownZ));
+
+  if (crown === 'penthouse') {
+    const phGlass = getFacadeMaterial({ style: 'modern', color: '#7ea3bf', cols: 3, rows: 2, isNight, isGlass: true });
+    const phH = Math.min(0.75, 0.42 + floors * 0.005);
+    g.add(makeBox(crownW * 0.74, phH, crownD * 0.72, phGlass, crownX, topY + 0.06 + phH * 0.5, crownZ));
+    g.add(makeBox(crownW * 0.84, 0.06, crownD * 0.82, trimMat, crownX, topY + 0.08 + phH, crownZ));
+  } else if (crown === 'garden') {
+    g.add(makeBox(crownW - 0.1, 0.06, crownD - 0.1, getStandardMaterial('#5c9652', 0.9, 0.0), crownX, topY + 0.09, crownZ, false, true));
+    makeTree(g, crownX - crownW * 0.2, crownZ - crownD * 0.18, 0.42, 'spring');
+    makeTree(g, crownX + crownW * 0.2, crownZ + crownD * 0.18, 0.36, 'spring');
+  } else if (crown === 'fin') {
+    const finH = 0.55 + floors * 0.015;
+    const glowMat = isNight
+      ? getStandardMaterial('#d8f0ff', 0.2, 0.1, '#8fd3ff', 2.0)
+      : trimMat;
+    g.add(makeBox(crownW * 0.84, finH * 0.5, crownD * 0.84, roofMat, crownX, topY + 0.06 + finH * 0.25, crownZ));
+    g.add(makeBox(crownW * 0.96, finH, 0.08, glowMat, crownX, topY + 0.06 + finH * 0.5, crownZ));
+    g.add(makeBox(0.08, finH, crownD * 0.96, glowMat, crownX, topY + 0.06 + finH * 0.5, crownZ));
+  } else if (crown === 'spire') {
+    const spireH = 0.95 + Math.min(1.6, floors * 0.025);
+    g.add(makeBox(crownW * 0.62, 0.32, crownD * 0.62, roofMat, crownX, topY + 0.2, crownZ));
+    g.add(makeCyl(0.02, 0.06, spireH, frameMat, crownX, topY + 0.36 + spireH * 0.5, crownZ));
+    if (isNight) {
+      const beacon = getStandardMaterial('#ff4d4d', 0.2, 0.0, '#ff3b30', 3.2);
+      g.add(makeBox(0.08, 0.08, 0.08, beacon, crownX, topY + 0.38 + spireH, crownZ, false, false));
+    }
+  }
+
+  return g;
+}
+
+// ============================================================================
+// 5. TOWNHOUSE ROW (1–4 Stories, Detached / Duplex / 3-Unit Rowhome Density)
 // ============================================================================
 function buildTownhouse(opts, isNight) {
   const g = new THREE.Group();
   const s = TILE_SIZE;
-  const floors = Math.max(1, Math.min(3, Number(opts.floors) || 2));
+  const floors = Math.max(1, Math.min(4, Number(opts.floors) || 2));
+  const density = opts.density || 'medium';
   const color = opts.color || '#dfd7c8';
   const roofColor = opts.roofColor || '#9c4f3d';
 
@@ -513,159 +774,286 @@ function buildTownhouse(opts, isNight) {
   const pathMat = getStandardMaterial('#cfc8ba', 0.88, 0.0);
   g.add(makeBox(s, 0.06, s, lawnMat, 0, 0.03, 0, false, true));
 
-  const unitW = 0.74;
-  const unitD = 1.06;
-  const unitH = floors * 0.36 + 0.16;
-  const facadeMat = getFacadeMaterial({ style: 'brick', color, cols: 2, rows: Math.max(1, floors), isNight });
+  const unitH = floors * 0.35 + 0.16;
   const roofMat = getStandardMaterial(roofColor, 0.82, 0.04);
   const doorMat = getStandardMaterial('#594132', 0.78, 0.05);
 
-  for (const xOff of [-0.42, 0.42]) {
-    const house = makeBox(unitW, unitH, unitD, facadeMat, xOff, 0.06 + unitH * 0.5, -0.14);
+  const layout =
+    density === 'low'
+      ? { offsets: [0], unitW: 1.06, unitD: 1.08, cols: 3, coneR: 0.78, coneZScale: 1.08 }
+      : density === 'high'
+        ? { offsets: [-0.58, 0, 0.58], unitW: 0.56, unitD: 1.18, cols: 2, coneR: 0.48, coneZScale: 1.75 }
+        : { offsets: [-0.42, 0.42], unitW: 0.74, unitD: 1.06, cols: 2, coneR: 0.62, coneZScale: 1.32 };
+
+  const facadeMat = getFacadeMaterial({ style: 'brick', color, cols: layout.cols, rows: Math.max(1, floors), isNight });
+
+  for (const xOff of layout.offsets) {
+    const house = makeBox(layout.unitW, unitH, layout.unitD, facadeMat, xOff, 0.06 + unitH * 0.5, -0.14);
     g.add(house);
-    // Pitched hip roof
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(0.62, 0.44, 4), roofMat);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(layout.coneR, 0.42, 4), roofMat);
     roof.rotation.y = Math.PI * 0.25;
-    roof.position.set(xOff, 0.06 + unitH + 0.22, -0.14);
-    roof.scale.set(0.95, 1, 1.32);
+    roof.position.set(xOff, 0.06 + unitH + 0.21, -0.14);
+    roof.scale.set(0.95, 1, layout.coneZScale);
     roof.castShadow = true;
     g.add(roof);
-    // Door + front path
-    g.add(makeBox(0.14, 0.24, 0.04, doorMat, xOff, 0.18, 0.4));
-    g.add(makeBox(0.2, 0.07, 0.56, pathMat, xOff, 0.035, 0.68, false, true));
+    g.add(makeBox(0.13, 0.24, 0.04, doorMat, xOff, 0.18, -0.14 + layout.unitD * 0.5 + 0.01));
+    g.add(makeBox(0.18, 0.07, 0.52, pathMat, xOff, 0.035, 0.68, false, true));
   }
 
   if (opts.garden) {
     const hedgeMat = getStandardMaterial('#487c45', 0.9, 0.0);
     g.add(makeBox(1.76, 0.16, 0.14, hedgeMat, 0, 0.14, 0.86));
-    makeTree(g, 0, 0.58, 0.48, 'spring');
+    if (density === 'low') {
+      makeTree(g, -0.7, 0.54, 0.56, 'spring');
+      makeTree(g, 0.7, 0.54, 0.5, 'spring');
+    } else {
+      makeTree(g, 0, 0.58, 0.46, 'spring');
+    }
   }
   return g;
 }
 
 // ============================================================================
-// 6. OFFICE TOWER
+// 6. OFFICE HIGH-RISE (4–60 Stories, Density & Supertall Silhouettes)
 // ============================================================================
 function buildOffice(opts, isNight) {
   const g = new THREE.Group();
   const s = TILE_SIZE;
-  const floors = Math.max(4, Math.min(18, Number(opts.floors) || 9));
+  const floors = Math.max(4, Math.min(60, Number(opts.floors) || 18));
+  const density = opts.density || 'medium';
   const color = opts.color || '#6d98b5';
   const massing = opts.massing || 'stepped';
   const crown = opts.crown || 'mechanical';
 
-  g.add(makeBox(s, 0.09, s, getPlazaStoneMaterial(), 0, 0.045, 0, false, true));
+  // Lot base (low density includes campus greenery around the plaza)
+  if (density === 'low') {
+    g.add(makeBox(s, 0.07, s, getStandardMaterial('#76a15c', 0.92, 0.0), 0, 0.035, 0, false, true));
+    g.add(makeBox(1.44, 0.09, 1.44, getPlazaStoneMaterial(), 0, 0.045, 0, false, true));
+    makeTree(g, -0.78, 0.76, 0.54, 'spring');
+    makeTree(g, 0.78, -0.76, 0.5, 'spring');
+  } else {
+    g.add(makeBox(s, 0.09, s, getPlazaStoneMaterial(), 0, 0.045, 0, false, true));
+  }
 
-  const floorH = 0.31;
+  const floorH = 0.29;
   const totalH = floors * floorH;
-  const glassMat = getFacadeMaterial({
-    style: 'modern',
-    color,
-    cols: 5,
-    rows: Math.min(10, Math.max(4, Math.round(floors * 0.75))),
-    isNight,
-    isGlass: true,
-  });
+  const cols = density === 'low' ? 4 : density === 'high' ? 6 : density === 'ultra' ? 7 : 5;
+  const baseW = density === 'low' ? 1.14 : density === 'high' ? 1.72 : density === 'ultra' ? 1.84 : 1.48;
   const frameMat = getStandardMaterial('#3d4652', 0.45, 0.4);
   const roofMat = getStandardMaterial('#596472', 0.75, 0.15);
 
-  let topY = 0.09;
-  let topW = 1.48;
-  let topD = 1.48;
+  const makeGlassMat = (rowsCount, colOverride) =>
+    getFacadeMaterial({
+      style: 'modern',
+      color,
+      cols: colOverride || cols,
+      rows: Math.max(2, Math.round(rowsCount)),
+      isNight,
+      isGlass: true,
+    });
+
+  const addGlassBlock = (w, h, d, rowsCount, x, yBot, z, colOverride) => {
+    const gm = makeGlassMat(rowsCount, colOverride);
+    const mats = [gm, gm, roofMat, frameMat, gm, gm];
+    const m = new THREE.Mesh(UNIT_BOX, mats);
+    m.scale.set(w, h, d);
+    m.position.set(x, yBot + h * 0.5, z);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    g.add(m);
+  };
+
+  let baseY = 0.09;
+  if (density === 'ultra' && massing !== 'twin') {
+    // Full-lot urban podium anchoring ultra-high-density office towers
+    const podH = 0.46;
+    g.add(makeBox(1.9, podH, 1.9, frameMat, 0, baseY + podH * 0.5, 0));
+    baseY += podH;
+  }
+
+  let topY = baseY + totalH;
+  let topW = baseW;
+  let topD = baseW;
+  let crownX = 0;
 
   if (massing === 'stepped') {
-    const h1 = totalH * 0.55;
-    const h2 = totalH * 0.45;
-    g.add(makeBox(1.56, h1, 1.56, glassMat, 0, 0.09 + h1 * 0.5, 0));
-    g.add(makeBox(1.6, 0.06, 1.6, frameMat, 0, 0.09 + h1, 0));
-    g.add(makeBox(1.16, h2, 1.16, glassMat, 0, 0.09 + h1 + h2 * 0.5, 0));
-    topY = 0.09 + totalH;
-    topW = 1.16;
-    topD = 1.16;
+    if (floors >= 22) {
+      // Classic 3-tier supertall setback tower
+      const f1 = Math.round(floors * 0.45);
+      const f2 = Math.round(floors * 0.33);
+      const f3 = Math.max(3, floors - f1 - f2);
+      const h1 = f1 * floorH;
+      const h2 = f2 * floorH;
+      const h3 = f3 * floorH;
+      const w1 = Math.min(1.86, baseW * 1.04);
+      const w2 = w1 * 0.78;
+      const w3 = w1 * 0.56;
+
+      addGlassBlock(w1, h1, w1, f1, 0, baseY, 0, cols);
+      g.add(makeBox(w1 + 0.05, 0.07, w1 + 0.05, frameMat, 0, baseY + h1, 0));
+      addGlassBlock(w2, h2, w2, f2, 0, baseY + h1, 0, Math.max(3, cols - 1));
+      g.add(makeBox(w2 + 0.05, 0.07, w2 + 0.05, frameMat, 0, baseY + h1 + h2, 0));
+      addGlassBlock(w3, h3, w3, f3, 0, baseY + h1 + h2, 0, Math.max(3, cols - 2));
+
+      topY = baseY + h1 + h2 + h3;
+      topW = w3;
+      topD = w3;
+    } else {
+      const f1 = Math.round(floors * 0.55);
+      const f2 = Math.max(2, floors - f1);
+      const h1 = f1 * floorH;
+      const h2 = f2 * floorH;
+      const w1 = Math.min(1.84, baseW * 1.05);
+      const w2 = w1 * 0.74;
+      addGlassBlock(w1, h1, w1, f1, 0, baseY, 0, cols);
+      g.add(makeBox(w1 + 0.05, 0.06, w1 + 0.05, frameMat, 0, baseY + h1, 0));
+      addGlassBlock(w2, h2, w2, f2, 0, baseY + h1, 0, Math.max(3, cols - 1));
+      topY = baseY + h1 + h2;
+      topW = w2;
+      topD = w2;
+    }
+  } else if (massing === 'tapered') {
+    // Iconic 4-tier tapering skyscraper silhouette
+    const splits = [0.38, 0.27, 0.2, 0.15];
+    const widths = [1.0, 0.82, 0.64, 0.46];
+    let curY = baseY;
+    let lastW = baseW;
+    for (let i = 0; i < splits.length; i++) {
+      const tierF = Math.max(2, Math.round(floors * splits[i]));
+      const tierH = tierF * floorH;
+      const tw = Math.min(1.86, baseW * widths[i]);
+      addGlassBlock(tw, tierH, tw, tierF, 0, curY, 0, Math.max(3, cols - i));
+      g.add(makeBox(tw + 0.05, 0.06, tw + 0.05, frameMat, 0, curY + tierH, 0));
+      curY += tierH;
+      lastW = tw;
+    }
+    topY = curY;
+    topW = lastW;
+    topD = lastW;
   } else if (massing === 'twin') {
-    const podiumH = 0.42;
-    g.add(makeBox(1.6, podiumH, 1.5, frameMat, 0, 0.09 + podiumH * 0.5, 0));
-    const wingH = totalH - podiumH;
-    g.add(makeBox(0.68, wingH, 1.32, glassMat, -0.42, 0.09 + podiumH + wingH * 0.5, 0));
-    g.add(makeBox(0.68, wingH * 0.85, 1.32, glassMat, 0.42, 0.09 + podiumH + wingH * 0.425, 0));
-    topY = 0.09 + totalH;
-    topW = 0.68;
-    topD = 1.32;
+    const podiumH = 0.44;
+    const podW = Math.min(1.9, baseW + 0.14);
+    const podD = Math.min(1.84, baseW + 0.04);
+    g.add(makeBox(podW, podiumH, podD, frameMat, 0, baseY + podiumH * 0.5, 0));
+    const wingF = Math.max(3, floors - 1);
+    const wingH = wingF * floorH;
+    const wingW = Math.min(0.82, baseW * 0.46);
+    const wingD = Math.min(1.68, baseW * 0.9);
+    const sep = Math.max(0.38, wingW * 0.5 + 0.1);
+    const wingF2 = Math.max(3, Math.round(wingF * 0.85));
+    const wingH2 = wingF2 * floorH;
+
+    addGlassBlock(wingW, wingH, wingD, wingF, -sep, baseY + podiumH, 0, Math.max(3, cols - 2));
+    addGlassBlock(wingW, wingH2, wingD, wingF2, sep, baseY + podiumH, 0, Math.max(3, cols - 2));
+    g.add(makeBox(wingW + 0.04, 0.06, wingD + 0.04, frameMat, sep, baseY + podiumH + wingH2 + 0.03, 0));
+
+    // Add sleek sky-connector bridge on tall or ultra-density twin towers
+    if (floors >= 22 || density === 'ultra') {
+      const bridgeY = baseY + podiumH + wingH2 * 0.62;
+      const bridgeSpan = sep * 2 - wingW + 0.08;
+      g.add(makeBox(bridgeSpan, 0.38, wingD * 0.5, makeGlassMat(1, 2), 0, bridgeY, 0));
+      g.add(makeBox(bridgeSpan + 0.04, 0.05, wingD * 0.54, frameMat, 0, bridgeY + 0.21, 0));
+    }
+
+    topY = baseY + podiumH + wingH;
+    topW = wingW;
+    topD = wingD;
+    crownX = -sep;
   } else {
-    g.add(makeBox(1.48, totalH, 1.48, glassMat, 0, 0.09 + totalH * 0.5, 0));
-    topY = 0.09 + totalH;
+    // Glass curtain wall tower
+    addGlassBlock(baseW, totalH, baseW, floors, 0, baseY, 0, cols);
+    // Mechanical sky-lobby accent band on tall curtain-wall skyscrapers
+    if (floors >= 26) {
+      g.add(makeBox(baseW + 0.04, 0.22, baseW + 0.04, frameMat, 0, baseY + totalH * 0.5, 0));
+    }
+    if (floors >= 44) {
+      g.add(makeBox(baseW + 0.04, 0.22, baseW + 0.04, frameMat, 0, baseY + totalH * 0.78, 0));
+    }
+    topY = baseY + totalH;
   }
 
   // Crown
-  const crownX = massing === 'twin' ? -0.42 : 0;
-  g.add(makeBox(topW + 0.04, 0.08, topD + 0.04, frameMat, crownX, topY + 0.04, 0));
+  g.add(makeBox(topW + 0.05, 0.08, topD + 0.05, frameMat, crownX, topY + 0.04, 0));
 
   if (crown === 'spire') {
-    g.add(makeBox(topW * 0.55, 0.24, topD * 0.55, roofMat, crownX, topY + 0.16, 0));
-    g.add(makeCyl(0.02, 0.05, 0.95, frameMat, crownX, topY + 0.72, 0));
+    const spireH = 0.95 + Math.min(1.85, floors * 0.03);
+    g.add(makeBox(topW * 0.58, 0.28, topD * 0.58, roofMat, crownX, topY + 0.18, 0));
+    g.add(makeCyl(0.02, 0.06, spireH, frameMat, crownX, topY + 0.32 + spireH * 0.5, 0));
     if (isNight) {
-      const beacon = getStandardMaterial('#ff4d4d', 0.2, 0.0, '#ff3b30', 3.0);
-      g.add(makeBox(0.07, 0.07, 0.07, beacon, crownX, topY + 1.22, 0, false, false));
+      const beacon = getStandardMaterial('#ff4d4d', 0.2, 0.0, '#ff3b30', 3.2);
+      g.add(makeBox(0.08, 0.08, 0.08, beacon, crownX, topY + 0.35 + spireH, 0, false, false));
     }
   } else if (crown === 'helipad') {
+    const padR = Math.min(0.42, Math.min(topW, topD) * 0.38);
     const padMat = getStandardMaterial('#48515c', 0.7, 0.1);
     const hMark = getStandardMaterial('#f2c94c', 0.6, 0.0);
-    g.add(makeCyl(0.42, 0.42, 0.06, padMat, crownX, topY + 0.1, 0));
-    g.add(makeBox(0.32, 0.015, 0.07, hMark, crownX, topY + 0.135, 0, false, false));
-    g.add(makeBox(0.07, 0.015, 0.34, hMark, crownX - 0.13, topY + 0.135, 0, false, false));
-    g.add(makeBox(0.07, 0.015, 0.34, hMark, crownX + 0.13, topY + 0.135, 0, false, false));
+    g.add(makeCyl(padR, padR, 0.06, padMat, crownX, topY + 0.1, 0));
+    g.add(makeBox(padR * 0.74, 0.015, padR * 0.16, hMark, crownX, topY + 0.135, 0, false, false));
+    g.add(makeBox(padR * 0.16, 0.015, padR * 0.8, hMark, crownX - padR * 0.3, topY + 0.135, 0, false, false));
+    g.add(makeBox(padR * 0.16, 0.015, padR * 0.8, hMark, crownX + padR * 0.3, topY + 0.135, 0, false, false));
   } else if (crown === 'garden') {
-    g.add(makeBox(topW - 0.14, 0.05, topD - 0.14, getStandardMaterial('#5c9652', 0.9, 0.0), crownX, topY + 0.1, 0));
-    makeTree(g, crownX - 0.18, -0.15, 0.44, 'spring');
-    makeTree(g, crownX + 0.18, 0.18, 0.38, 'spring');
+    g.add(makeBox(topW - 0.12, 0.05, topD - 0.12, getStandardMaterial('#5c9652', 0.9, 0.0), crownX, topY + 0.1, 0));
+    makeTree(g, crownX - topW * 0.18, -topD * 0.15, 0.42, 'spring');
+    makeTree(g, crownX + topW * 0.18, topD * 0.16, 0.36, 'spring');
   } else {
-    g.add(makeBox(topW * 0.62, 0.26, topD * 0.62, roofMat, crownX, topY + 0.18, 0));
+    g.add(makeBox(topW * 0.62, 0.28, topD * 0.62, roofMat, crownX, topY + 0.19, 0));
   }
 
   return g;
 }
 
 // ============================================================================
-// 7. CORNER CAFE & SHOP
+// 7. CORNER CAFE & SHOP (1–4 Stories, Boutique / Standard / Dense Retail)
 // ============================================================================
 function buildShop(opts, isNight) {
   const g = new THREE.Group();
   const s = TILE_SIZE;
-  const floors = Math.max(1, Math.min(3, Number(opts.floors) || 2));
+  const floors = Math.max(1, Math.min(4, Number(opts.floors) || 2));
+  const density = opts.density || 'medium';
   const color = opts.color || '#dfd7c8';
   const awningColor = opts.awningColor || '#2f6f4e';
 
   g.add(makeBox(s, 0.08, s, getPlazaStoneMaterial(), 0, 0.04, 0, false, true));
 
-  const bodyW = 1.48;
-  const bodyD = 1.16;
+  const bodyW = density === 'low' ? 1.12 : density === 'high' ? 1.82 : 1.48;
+  const bodyD = density === 'low' ? 0.98 : density === 'high' ? 1.38 : 1.16;
+  const bodyZ = density === 'high' ? -0.14 : -0.22;
   const bodyH = 0.46 + (floors - 1) * 0.34;
-  const facadeMat = getFacadeMaterial({ style: 'midcentury', color, cols: 3, rows: floors, isNight });
+  const winCols = density === 'low' ? 2 : density === 'high' ? 4 : 3;
+
+  const facadeMat = getFacadeMaterial({ style: 'midcentury', color, cols: winCols, rows: floors, isNight });
   const trimMat = getStandardMaterial('#404854', 0.65, 0.15);
   const awningMat = getStandardMaterial(awningColor, 0.78, 0.02);
   const glowMat = isNight
     ? getStandardMaterial('#ffebb3', 0.2, 0.0, '#ffd478', 1.65)
     : getStandardMaterial('#486882', 0.22, 0.25);
 
-  g.add(makeBox(bodyW, bodyH, bodyD, facadeMat, 0, 0.08 + bodyH * 0.5, -0.22));
-  g.add(makeBox(bodyW + 0.06, 0.07, bodyD + 0.06, trimMat, 0, 0.08 + bodyH + 0.03, -0.22));
-  // Large front shop window
-  g.add(makeBox(1.12, 0.28, 0.04, glowMat, 0, 0.27, 0.37, false, false));
+  g.add(makeBox(bodyW, bodyH, bodyD, facadeMat, 0, 0.08 + bodyH * 0.5, bodyZ));
+  g.add(makeBox(bodyW + 0.06, 0.07, bodyD + 0.06, trimMat, 0, 0.08 + bodyH + 0.03, bodyZ));
 
-  // Awning
-  const awning = makeBox(1.36, 0.05, 0.32, awningMat, 0, 0.47, 0.49);
+  const frontZ = bodyZ + bodyD * 0.5;
+  g.add(makeBox(bodyW * 0.78, 0.28, 0.04, glowMat, 0, 0.27, frontZ + 0.01, false, false));
+
+  const awning = makeBox(bodyW * 0.92, 0.05, 0.3, awningMat, 0, 0.47, frontZ + 0.12);
   awning.rotation.x = 0.32;
   g.add(awning);
+
+  if (density === 'low') {
+    makeTree(g, -0.74, -0.66, 0.48, 'spring');
+    makeTree(g, 0.74, -0.66, 0.44, 'spring');
+  }
 
   if (opts.patio) {
     const tableMat = getStandardMaterial('#f2eee6', 0.7, 0.05);
     const umbMat = getStandardMaterial(awningColor, 0.78, 0.0);
-    for (const px of [-0.42, 0.42]) {
-      g.add(makeCyl(0.14, 0.14, 0.03, tableMat, px, 0.22, 0.68));
-      g.add(makeCyl(0.02, 0.02, 0.32, trimMat, px, 0.24, 0.68));
+    const patioZ = density === 'high' ? 0.76 : 0.68;
+    const offsets = density === 'high' ? [-0.56, 0, 0.56] : [-0.42, 0.42];
+    for (const px of offsets) {
+      g.add(makeCyl(0.13, 0.13, 0.03, tableMat, px, 0.22, patioZ));
+      g.add(makeCyl(0.02, 0.02, 0.3, trimMat, px, 0.24, patioZ));
       const umb = new THREE.Mesh(UNIT_CONE, umbMat);
-      umb.scale.set(0.42, 0.14, 0.42);
-      umb.position.set(px, 0.44, 0.68);
+      umb.scale.set(0.38, 0.14, 0.38);
+      umb.position.set(px, 0.44, patioZ);
       umb.castShadow = true;
       g.add(umb);
     }
@@ -846,6 +1234,9 @@ export function buildTileMesh(tile, neighbors, isNight) {
       break;
     case 'water':
       group = buildWater(opts, neighbors, isNight);
+      break;
+    case 'highrise':
+      group = buildResidentialHighRise(opts, isNight);
       break;
     case 'apartment':
       group = buildApartment(opts, isNight);
