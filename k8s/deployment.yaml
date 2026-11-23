@@ -105,9 +105,6 @@ metadata:
     app: jenkins-demo-app
 spec:
   type: LoadBalancer
-  loadBalancerSourceRanges:
-    - 104.135.202.0/24
-    - 172.0.14.225/32
   selector:
     app: jenkins-demo-app
   ports:
