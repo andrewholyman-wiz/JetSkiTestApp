@@ -54,8 +54,11 @@ jobs:
           WIZ_CLIENT_SECRET: ${{ secrets.WIZ_CLIENT_SECRET }}
         run: |
           set -euo pipefail
-          if [ -z "${WIZ_CLIENT_ID:-}" ] || [ -z "${WIZ_CLIENT_SECRET:-}" ]; then
-            echo "::warning::WIZ_CLIENT_ID and WIZ_CLIENT_SECRET repository secrets are not set — skipping WizCLI directory scan."
+          MISSING=""
+          [ -z "${WIZ_CLIENT_ID:-}" ] && MISSING="${MISSING} WIZ_CLIENT_ID"
+          [ -z "${WIZ_CLIENT_SECRET:-}" ] && MISSING="${MISSING} WIZ_CLIENT_SECRET"
+          if [ -n "${MISSING}" ]; then
+            echo "::warning::Missing repository secret(s):${MISSING} — skipping WizCLI directory scan."
             exit 0
           fi
 
@@ -193,10 +196,10 @@ jobs:
             ${{ steps.meta.outputs.image_uri }}:git-${{ steps.meta.outputs.git_short }}
             ${{ steps.meta.outputs.image_uri }}:latest
           annotations: |
-            index,manifest:org.opencontainers.image.source=${{ steps.meta.outputs.dockerfile_permalink }}
-            index,manifest:org.opencontainers.image.revision=${{ github.sha }}
-            index,manifest:org.opencontainers.image.url=https://github.com/${{ github.repository }}
-            index,manifest:org.opencontainers.image.title=Civitas Studio
+            manifest:org.opencontainers.image.source=${{ steps.meta.outputs.dockerfile_permalink }}
+            manifest:org.opencontainers.image.revision=${{ github.sha }}
+            manifest:org.opencontainers.image.url=https://github.com/${{ github.repository }}
+            manifest:org.opencontainers.image.title=Civitas Studio
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -243,8 +246,11 @@ jobs:
           IMAGE_DIGEST: ${{ steps.verify-oci.outputs.digest || steps.build-push.outputs.digest }}
         run: |
           set -euo pipefail
-          if [ -z "${WIZ_CLIENT_ID:-}" ] || [ -z "${WIZ_CLIENT_SECRET:-}" ]; then
-            echo "::warning::WIZ_CLIENT_ID and WIZ_CLIENT_SECRET repository secrets are not set — skipping WizCLI container scan and digest tagging."
+          MISSING=""
+          [ -z "${WIZ_CLIENT_ID:-}" ] && MISSING="${MISSING} WIZ_CLIENT_ID"
+          [ -z "${WIZ_CLIENT_SECRET:-}" ] && MISSING="${MISSING} WIZ_CLIENT_SECRET"
+          if [ -n "${MISSING}" ]; then
+            echo "::warning::Missing repository secret(s):${MISSING} — skipping WizCLI container scan and digest tagging."
             exit 0
           fi
 
