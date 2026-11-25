@@ -1,5 +1,5 @@
 # Multi-stage production build — zero Node.js runtime in final container
-FROM public.ecr.aws/docker/library/node:22-alpine AS builder
+FROM mirror.gcr.io/library/node:22-alpine AS builder
 WORKDIR /app
 
 COPY package.json ./
@@ -10,7 +10,7 @@ COPY src ./src
 RUN npm run build
 
 # Hardened non-root Nginx serving static bundle on port 8080 (PSS Restricted compatible)
-FROM public.ecr.aws/docker/library/nginx:alpine
+FROM mirror.gcr.io/library/nginx:alpine
 
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY --from=builder /app/dist /usr/share/nginx/html

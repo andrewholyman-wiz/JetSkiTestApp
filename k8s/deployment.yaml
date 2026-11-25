@@ -3,7 +3,7 @@ kind: Namespace
 metadata:
   name: demo-app
   labels:
-    app.kubernetes.io/part-of: jenkins-demo-app
+    app.kubernetes.io/part-of: civitas
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted
@@ -11,19 +11,22 @@ metadata:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: jenkins-demo-app
+  name: civitas
   namespace: demo-app
   labels:
-    app: jenkins-demo-app
+    app: civitas
+    app.kubernetes.io/name: civitas
+    app.kubernetes.io/part-of: civitas
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: jenkins-demo-app
+      app: civitas
   template:
     metadata:
       labels:
-        app: jenkins-demo-app
+        app: civitas
+        app.kubernetes.io/name: civitas
     spec:
       automountServiceAccountToken: false
       topologySpreadConstraints:
@@ -32,7 +35,7 @@ spec:
           whenUnsatisfiable: ScheduleAnyway
           labelSelector:
             matchLabels:
-              app: jenkins-demo-app
+              app: civitas
       securityContext:
         runAsNonRoot: true
         runAsUser: 101
@@ -88,25 +91,26 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: jenkins-demo-app-pdb
+  name: civitas-pdb
   namespace: demo-app
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app: jenkins-demo-app
+      app: civitas
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: jenkins-demo-app
+  name: civitas
   namespace: demo-app
   labels:
-    app: jenkins-demo-app
+    app: civitas
+    app.kubernetes.io/name: civitas
 spec:
   type: LoadBalancer
   selector:
-    app: jenkins-demo-app
+    app: civitas
   ports:
     - name: http
       port: 80
