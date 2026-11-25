@@ -1,0 +1,346 @@
+name: Build, WizCLI Scan & Deploy
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write # Push to GHCR until GCP Artifact Registry is configured
+  id-token: write # Keyless Workload Identity Federation when GCP is configured
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: civitas
+  WIZCLI_URL: https://downloads.wiz.io/v1/wizcli/latest/wizcli-linux-amd64
+  K8S_NAMESPACE: demo-app
+  K8S_DEPLOYMENT: civitas
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Repo / IaC / SAST / Secrets Scan (replaces Jenkins "WizCLI Repo / IaC Scan")
+  # ---------------------------------------------------------------------------
+  wiz-repo-scan:
+    name: WizCLI Repo / IaC Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Inspect checkout
+        run: |
+          echo "Repository: ${GITHUB_REPOSITORY}"
+          echo "Branch/Ref: ${GITHUB_REF_NAME} (${GITHUB_REF})"
+          echo "Commit: $(git rev-parse --short HEAD) (${GITHUB_SHA})"
+          git log -1 --oneline
+
+      - name: Install WizCLI
+        run: |
+          curl -fsSL -o wizcli "${WIZCLI_URL}"
+          chmod +x wizcli
+          ./wizcli version
+
+      - name: Run WizCLI directory / IaC scan
+        env:
+          WIZ_CLIENT_ID: ${{ secrets.WIZ_CLIENT_ID }}
+          WIZ_CLIENT_SECRET: ${{ secrets.WIZ_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WIZ_CLIENT_ID:-}" ] || [ -z "${WIZ_CLIENT_SECRET:-}" ]; then
+            echo "::warning::WIZ_CLIENT_ID and WIZ_CLIENT_SECRET repository secrets are not set — skipping WizCLI directory scan."
+            exit 0
+          fi
+
+          GIT_SHORT=$(git rev-parse --short HEAD)
+          ./wizcli auth --id "${WIZ_CLIENT_ID}" --secret "${WIZ_CLIENT_SECRET}"
+          ./wizcli scan dir . \
+            --name "${GITHUB_REPOSITORY} (#${GITHUB_RUN_NUMBER})" \
+            --tag "git_repo=${GITHUB_REPOSITORY}" \
+            --tag "git_commit=${GIT_SHORT}" \
+            --json-output-file wiz-dir-scan-report.json
+
+      - name: Upload WizCLI directory scan report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiz-dir-scan-report-${{ github.run_number }}
+          path: wiz-dir-scan-report.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Build (with OCI C2C Annotations), Push Registry, WizCLI Scan & Tag
+  # ---------------------------------------------------------------------------
+  build-scan-push:
+    name: Build, Push & WizCLI Container Scan
+    runs-on: ubuntu-latest
+    outputs:
+      image_uri: ${{ steps.meta.outputs.image_uri }}
+      image_digest: ${{ steps.build-push.outputs.digest }}
+      image_ref_pinned: ${{ steps.meta.outputs.image_uri }}:${{ github.run_number }}@${{ steps.build-push.outputs.digest }}
+      registry_mode: ${{ steps.meta.outputs.registry_mode }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve image target & metadata
+        id: meta
+        env:
+          GCP_ARTIFACT_REGISTRY: ${{ vars.GCP_ARTIFACT_REGISTRY }}
+        run: |
+          set -euo pipefail
+          GIT_SHORT=$(git rev-parse --short HEAD)
+          OWNER_LOWER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+
+          if [ -n "${GCP_ARTIFACT_REGISTRY:-}" ]; then
+            REGISTRY_MODE="gcp"
+            REGISTRY_CLEAN="${GCP_ARTIFACT_REGISTRY%/}"
+            REGISTRY_HOST="${REGISTRY_CLEAN%%/*}"
+            IMAGE_URI="${REGISTRY_CLEAN}/${IMAGE_NAME}"
+          else
+            REGISTRY_MODE="ghcr"
+            REGISTRY_HOST="ghcr.io"
+            IMAGE_URI="ghcr.io/${OWNER_LOWER}/${IMAGE_NAME}"
+          fi
+
+          DOCKERFILE_PERMALINK="https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/Dockerfile"
+
+          {
+            echo "git_short=${GIT_SHORT}"
+            echo "registry_mode=${REGISTRY_MODE}"
+            echo "registry_host=${REGISTRY_HOST}"
+            echo "image_uri=${IMAGE_URI}"
+            echo "dockerfile_permalink=${DOCKERFILE_PERMALINK}"
+          } >> "${GITHUB_OUTPUT}"
+
+          echo "Registry Mode: ${REGISTRY_MODE}"
+          echo "Image URI: ${IMAGE_URI}"
+          echo "OCI Source Permalink: ${DOCKERFILE_PERMALINK}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # --- Registry Authentication (non-PR builds) ---
+      - name: Authenticate to GitHub Container Registry (GHCR)
+        if: github.event_name != 'pull_request' && steps.meta.outputs.registry_mode == 'ghcr'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        id: gcp-auth-wif
+        if: github.event_name != 'pull_request' && steps.meta.outputs.registry_mode == 'gcp' && vars.GCP_WIF_PROVIDER != ''
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_WIF_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - name: Authenticate to Google Cloud (Service Account Key fallback)
+        id: gcp-auth-key
+        if: github.event_name != 'pull_request' && steps.meta.outputs.registry_mode == 'gcp' && vars.GCP_WIF_PROVIDER == ''
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          token_format: access_token
+
+      - name: Authenticate Docker to GCP Artifact Registry
+        if: github.event_name != 'pull_request' && steps.meta.outputs.registry_mode == 'gcp'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ steps.meta.outputs.registry_host }}
+          username: oauth2accesstoken
+          password: ${{ steps.gcp-auth-wif.outputs.access_token || steps.gcp-auth-key.outputs.access_token }}
+
+      # --- PR Path: Local build only (never pushes) ---
+      - name: Build Docker image locally (Pull Request)
+        if: github.event_name == 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.image_uri }}:pr-${{ github.event.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # --- Main / Dispatch Path: Build & push with OCI C2C manifest annotations ---
+      - name: Build & push OCI-annotated Docker image
+        id: build-push
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ vars.IMAGE_PLATFORMS || 'linux/amd64' }}
+          push: true
+          provenance: false
+          sbom: false
+          tags: |
+            ${{ steps.meta.outputs.image_uri }}:${{ github.run_number }}
+            ${{ steps.meta.outputs.image_uri }}:git-${{ steps.meta.outputs.git_short }}
+            ${{ steps.meta.outputs.image_uri }}:latest
+          annotations: |
+            index,manifest:org.opencontainers.image.source=${{ steps.meta.outputs.dockerfile_permalink }}
+            index,manifest:org.opencontainers.image.revision=${{ github.sha }}
+            index,manifest:org.opencontainers.image.url=https://github.com/${{ github.repository }}
+            index,manifest:org.opencontainers.image.title=Civitas Studio
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify OCI manifest annotations & pull pushed digest
+        id: verify-oci
+        if: github.event_name != 'pull_request'
+        env:
+          IMAGE_URI: ${{ steps.meta.outputs.image_uri }}
+          BUILD_DIGEST: ${{ steps.build-push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          echo "Pushed image: ${IMAGE_URI}:${GITHUB_RUN_NUMBER}"
+          echo "Pushed digest: ${BUILD_DIGEST}"
+
+          echo "=== OCI Manifest Inspection ==="
+          docker buildx imagetools inspect --raw "${IMAGE_URI}@${BUILD_DIGEST}"
+
+          echo "=== Pulling pushed image so local RepoDigest matches registry ==="
+          docker pull "${IMAGE_URI}:${GITHUB_RUN_NUMBER}"
+          docker images --digests "${IMAGE_URI}"
+
+          PULLED_DIGEST=$(docker inspect --format='{{range .RepoDigests}}{{println .}}{{end}}' "${IMAGE_URI}:${GITHUB_RUN_NUMBER}" \
+            | grep "^${IMAGE_URI}@" | head -n 1 | cut -d@ -f2)
+
+          if [ -z "${PULLED_DIGEST}" ]; then
+            echo "ERROR: Could not resolve RepoDigest for ${IMAGE_URI}:${GITHUB_RUN_NUMBER}" >&2
+            exit 1
+          fi
+          echo "Verified RepoDigest: ${PULLED_DIGEST}"
+          echo "digest=${PULLED_DIGEST}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install WizCLI
+        run: |
+          curl -fsSL -o wizcli "${WIZCLI_URL}"
+          chmod +x wizcli
+          ./wizcli version
+
+      - name: WizCLI Container Image Scan & C2C Digest Tag
+        env:
+          WIZ_CLIENT_ID: ${{ secrets.WIZ_CLIENT_ID }}
+          WIZ_CLIENT_SECRET: ${{ secrets.WIZ_CLIENT_SECRET }}
+          IMAGE_URI: ${{ steps.meta.outputs.image_uri }}
+          GIT_SHORT: ${{ steps.meta.outputs.git_short }}
+          IMAGE_DIGEST: ${{ steps.verify-oci.outputs.digest || steps.build-push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WIZ_CLIENT_ID:-}" ] || [ -z "${WIZ_CLIENT_SECRET:-}" ]; then
+            echo "::warning::WIZ_CLIENT_ID and WIZ_CLIENT_SECRET repository secrets are not set — skipping WizCLI container scan and digest tagging."
+            exit 0
+          fi
+
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            SCAN_TARGET="${IMAGE_URI}:pr-${{ github.event.number }}"
+          else
+            SCAN_TARGET="${IMAGE_URI}:${GITHUB_RUN_NUMBER}"
+          fi
+
+          ./wizcli auth --id "${WIZ_CLIENT_ID}" --secret "${WIZ_CLIENT_SECRET}"
+
+          # WizCLI automatically reads GitHub Actions CI metadata (GITHUB_ACTIONS, GITHUB_REPOSITORY,
+          # GITHUB_REF_NAME, GITHUB_SHA, GITHUB_ACTOR, GITHUB_JOB, GITHUB_SERVER_URL) and auto-tags
+          # the registry RepoDigest when scanning an image pulled from the registry.
+          ./wizcli scan container-image "${SCAN_TARGET}" \
+            --dockerfile Dockerfile \
+            --tag "git_repo=${GITHUB_REPOSITORY}" \
+            --tag "git_commit=${GIT_SHORT}" \
+            --json-output-file wiz-image-scan-report.json
+
+          # Explicit wizcli tag is also required for Wiz Admission Controller Image Trust attestation
+          if [ "${GITHUB_EVENT_NAME}" != "pull_request" ] && [ -n "${IMAGE_DIGEST:-}" ]; then
+            echo "Tagging scanned image ${SCAN_TARGET} with digest ${IMAGE_DIGEST} in Wiz for C2C & Image Trust..."
+            ./wizcli tag "${SCAN_TARGET}" --digest="${IMAGE_DIGEST}"
+          fi
+
+      - name: Upload WizCLI container scan report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiz-image-scan-report-${{ github.run_number }}
+          path: wiz-image-scan-report.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Write pipeline summary
+        if: always()
+        env:
+          REGISTRY_MODE: ${{ steps.meta.outputs.registry_mode }}
+          IMAGE_URI: ${{ steps.meta.outputs.image_uri }}
+          IMAGE_DIGEST: ${{ steps.build-push.outputs.digest }}
+          DOCKERFILE_PERMALINK: ${{ steps.meta.outputs.dockerfile_permalink }}
+          GKE_CLUSTER: ${{ vars.GKE_CLUSTER }}
+        run: |
+          {
+            echo "## Civitas CI/CD Summary (Run #${GITHUB_RUN_NUMBER})"
+            echo ""
+            echo "| Field | Value |"
+            echo "| :--- | :--- |"
+            echo "| **Registry Target** | \`${REGISTRY_MODE}\` (\`${IMAGE_URI}\`) |"
+            echo "| **Image Tag** | \`${IMAGE_URI}:${GITHUB_RUN_NUMBER}\` |"
+            echo "| **Image Digest** | \`${IMAGE_DIGEST:-n/a (PR build)}\` |"
+            echo "| **OCI Source Annotation** | \`${DOCKERFILE_PERMALINK}\` |"
+            echo "| **GKE Deploy** | \`${GKE_CLUSTER:-Skipped (GCP/GKE TBD)}\` |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Deploy to Google Kubernetes Engine (GKE) — auto-activates once GCP vars are set
+  # ---------------------------------------------------------------------------
+  deploy-gke:
+    name: Deploy to GKE
+    needs: [wiz-repo-scan, build-scan-push]
+    if: github.event_name != 'pull_request' && vars.GKE_CLUSTER != '' && vars.GCP_PROJECT_ID != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        if: vars.GCP_WIF_PROVIDER != ''
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_WIF_SERVICE_ACCOUNT }}
+
+      - name: Authenticate to Google Cloud (Service Account Key fallback)
+        if: vars.GCP_WIF_PROVIDER == ''
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ vars.GKE_CLUSTER }}
+          location: ${{ vars.GKE_LOCATION }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Render & apply Kubernetes manifests (digest-pinned)
+        env:
+          PINNED_IMAGE: ${{ needs.build-scan-push.outputs.image_ref_pinned }}
+        run: |
+          set -euo pipefail
+          echo "Deploying immutable image: ${PINNED_IMAGE}"
+          sed "s|__IMAGE_URI__|${PINNED_IMAGE}|g" k8s/deployment.yaml > k8s-rendered.yaml
+          kubectl apply -f k8s-rendered.yaml
+          kubectl -n "${K8S_NAMESPACE}" rollout status "deployment/${K8S_DEPLOYMENT}" --timeout=120s
+          kubectl -n "${K8S_NAMESPACE}" get pods,svc,pdb -o wide
+          rm -f k8s-rendered.yaml
